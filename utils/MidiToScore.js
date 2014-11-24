@@ -20,7 +20,7 @@ var ticksPerBeat = midi.header.ticksPerBeat;
 var timeSignature = [4, 4];
 var microsecondsPerBeat = 60000000 / tempo;
 
-//parse the tracks
+////parse the tracks
 for (var i = 0; i < midi.tracks.length; i++) {
 	var data = midi.tracks[i];
 	var trackName = "track"+i;
@@ -29,6 +29,7 @@ for (var i = 0; i < midi.tracks.length; i++) {
 	for (var j = 0; j < data.length; j++) {
 		//meta tag stuff
 		var evnt = data[j];
+		currentTime += evnt.deltaTime;
 		if (evnt.type === "meta"){
 			if (evnt.subtype === "timeSignature"){
 				timeSignature[0] = evnt.numerator;
@@ -41,7 +42,6 @@ for (var i = 0; i < midi.tracks.length; i++) {
 			}
 		} else {
 			if (evnt.subtype === "noteOn" || evnt.subtype === "noteOff"){
-				currentTime += evnt.deltaTime;
 				var time = deltaTimeToMeter(currentTime);
 				var note = midiToNote(evnt.noteNumber);
 				var velocity = evnt.velocity / 127;
