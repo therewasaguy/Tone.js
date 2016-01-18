@@ -1,17 +1,29 @@
-define(["Tone/core/Tone", "Tone/component/Envelope", "Tone/source/OmniOscillator", 
-	"Tone/signal/Signal", "Tone/component/Filter", "Tone/signal/Add", "Tone/instrument/Monophonic"], 
+define(["Tone/core/Tone", "Tone/component/AmplitudeEnvelope", "Tone/component/FrequencyEnvelope", 
+	"Tone/source/OmniOscillator", "Tone/signal/Signal", "Tone/component/Filter", "Tone/instrument/Monophonic"], 
 function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class  the MonoSynth is a single oscillator, monophonic synthesizer
-	 *          with a filter, and two envelopes (on the filter and the amplitude)
-	 *
+	 *  @class  Tone.MonoSynth is composed of one oscillator, one filter, and two envelopes.
+	 *          The amplitude of the Tone.Oscillator and the cutoff frequency of the 
+	 *          Tone.Filter are controlled by Tone.Envelopes. 
+	 *          <img src="https://docs.google.com/drawings/d/1gaY1DF9_Hzkodqf8JI1Cg2VZfwSElpFQfI94IQwad38/pub?w=924&h=240">
+	 *          
 	 *  @constructor
 	 *  @extends {Tone.Monophonic}
-	 *  @param {Object} options the options available for the synth 
+	 *  @param {Object} [options] the options available for the synth 
 	 *                          see defaults below
+	 *  @example
+	 * var synth = new Tone.MonoSynth({
+	 * 	"oscillator" : {
+	 * 		"type" : "square"
+	 *  },
+	 *  "envelope" : {
+	 *  	"attack" : 0.1
+	 *  }
+	 * }).toMaster();
+	 * synth.triggerAttackRelease("C4", "8n");
 	 */
 	Tone.MonoSynth = function(options){
 
@@ -20,57 +32,50 @@ function(Tone){
 		Tone.Monophonic.call(this, options);
 
 		/**
-		 *  the first oscillator
+		 *  The oscillator.
 		 *  @type {Tone.OmniOscillator}
 		 */
 		this.oscillator = new Tone.OmniOscillator(options.oscillator);
 
 		/**
-		 *  the frequency control signal
-		 *  @type {Tone.Signal}
+		 *  The frequency control.
+		 *  @type {Frequency}
+		 *  @signal
 		 */
 		this.frequency = this.oscillator.frequency;
 
 		/**
-		 *  the detune control signal
-		 *  @type {Tone.Signal}
+		 *  The detune control.
+		 *  @type {Cents}
+		 *  @signal
 		 */
 		this.detune = this.oscillator.detune;
 
 		/**
-		 *  the filter
+		 *  The filter.
 		 *  @type {Tone.Filter}
 		 */
 		this.filter = new Tone.Filter(options.filter);
 
 		/**
-		 *  the filter envelope
-		 *  @type {Tone.Envelope}
+		 *  The filter envelope.
+		 *  @type {Tone.FrequencyEnvelope}
 		 */
-		this.filterEnvelope = new Tone.Envelope(options.filterEnvelope);
+		this.filterEnvelope = new Tone.FrequencyEnvelope(options.filterEnvelope);
 
 		/**
-		 *  the amplitude envelope
-		 *  @type {Tone.Envelope}
+		 *  The amplitude envelope.
+		 *  @type {Tone.AmplitudeEnvelope}
 		 */
-		this.envelope = new Tone.Envelope(options.envelope);
-
-		/**
-		 *  the amplitude
-		 *  @type {GainNode}
-		 *  @private
-		 */
-		this._amplitude = this.context.createGain();
+		this.envelope = new Tone.AmplitudeEnvelope(options.envelope);
 
 		//connect the oscillators to the output
-		this.oscillator.connect(this.filter);
-		this.filter.connect(this._amplitude);
+		this.oscillator.chain(this.filter, this.envelope, this.output);
 		//start the oscillators
 		this.oscillator.start();
-		//connect the envelopes
+		//connect the filter envelope
 		this.filterEnvelope.connect(this.filter.frequency);
-		this.envelope.connect(this._amplitude.gain);
-		this._amplitude.connect(this.output);
+		this._readOnly(["oscillator", "frequency", "detune", "filter", "filterEnvelope", "envelope"]);
 	};
 
 	Tone.extend(Tone.MonoSynth, Tone.Monophonic);
@@ -81,6 +86,8 @@ function(Tone){
 	 *  @type {Object}
 	 */
 	Tone.MonoSynth.defaults = {
+		"frequency" : "C4",
+		"detune" : 0,
 		"oscillator" : {
 			"type" : "square"
 		},
@@ -100,72 +107,57 @@ function(Tone){
 			"decay" : 0.2,
 			"sustain" : 0.5,
 			"release" : 2,
-			"min" : 20,
-			"max" : 4000
+			"baseFrequency" : 200,
+			"octaves" : 7,
+			"exponent" : 2
 		}
 	};
 
 	/**
 	 *  start the attack portion of the envelope
-	 *  @param {Tone.Time=} [time=now] the time the attack should start
-	 *  @param {number=} velocity the velocity of the note (0-1)
+	 *  @param {Time} [time=now] the time the attack should start
+	 *  @param {NormalRange} [velocity=1] the velocity of the note (0-1)
+	 *  @returns {Tone.MonoSynth} this
+	 *  @private
 	 */
-	Tone.MonoSynth.prototype.triggerEnvelopeAttack = function(time, velocity){
+	Tone.MonoSynth.prototype._triggerEnvelopeAttack = function(time, velocity){
 		//the envelopes
 		this.envelope.triggerAttack(time, velocity);
-		this.filterEnvelope.triggerAttack(time);		
+		this.filterEnvelope.triggerAttack(time);	
+		return this;	
 	};
 
 	/**
 	 *  start the release portion of the envelope
-	 *  @param {Tone.Time=} [time=now] the time the release should start
+	 *  @param {Time} [time=now] the time the release should start
+	 *  @returns {Tone.MonoSynth} this
+	 *  @private
 	 */
-	Tone.MonoSynth.prototype.triggerEnvelopeRelease = function(time){
+	Tone.MonoSynth.prototype._triggerEnvelopeRelease = function(time){
 		this.envelope.triggerRelease(time);
 		this.filterEnvelope.triggerRelease(time);
+		return this;
 	};
 
-	/**
-	 *  set the oscillator type
-	 *  @param {string} oscType the type of oscillator
-	 */
-	Tone.MonoSynth.prototype.setOscType = function(type){
-		this.oscillator.setType(type);
-	};
-
-	/**
-	 *  set the members at once
-	 *  @param {Object} params all of the parameters as an object.
-	 *                         params for envelope and filterEnvelope 
-	 *                         should be nested objects. 
-	 */
-	Tone.MonoSynth.prototype.set = function(params){
-		if (!this.isUndef(params.detune)) this.detune.setValue(params.detune);
-		if (!this.isUndef(params.oscillator)) this.oscillator.set(params.oscillator);
-		if (!this.isUndef(params.filterEnvelope)) this.filterEnvelope.set(params.filterEnvelope);
-		if (!this.isUndef(params.envelope)) this.envelope.set(params.envelope);
-		if (!this.isUndef(params.filter)) this.filter.set(params.filter);
-		Tone.Monophonic.prototype.set.call(this, params);
-	};
 
 	/**
 	 *  clean up
+	 *  @returns {Tone.MonoSynth} this
 	 */
 	Tone.MonoSynth.prototype.dispose = function(){
 		Tone.Monophonic.prototype.dispose.call(this);
+		this._writable(["oscillator", "frequency", "detune", "filter", "filterEnvelope", "envelope"]);
 		this.oscillator.dispose();
-		this.envelope.dispose();
-		this.filterEnvelope.dispose();
-		this.filter.dispose();
-		this._amplitude.disconnect();
 		this.oscillator = null;
-		this.filterEnvelope = null;
+		this.envelope.dispose();
 		this.envelope = null;
+		this.filterEnvelope.dispose();
+		this.filterEnvelope = null;
+		this.filter.dispose();
 		this.filter = null;
-		this.detune = null;
-		this._amplitude = null;
 		this.frequency = null;
 		this.detune = null;
+		return this;
 	};
 
 	return Tone.MonoSynth;

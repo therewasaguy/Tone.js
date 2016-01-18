@@ -1,4 +1,5 @@
-define(["Tone/core/Tone", "Tone/component/LowpassCombFilter", "Tone/effect/StereoEffect", "Tone/signal/Signal", "Tone/component/Split", "Tone/component/Merge"], 
+define(["Tone/core/Tone", "Tone/component/LowpassCombFilter", "Tone/effect/StereoEffect", 
+	"Tone/signal/Signal", "Tone/component/Split", "Tone/component/Merge", "Tone/signal/ScaleExp"], 
 function(Tone){
 
 	"use strict";
@@ -20,14 +21,19 @@ function(Tone){
 	var allpassFilterFrequencies = [225, 556, 441, 341];
 
 	/**
-	 *  @class Reverb based on the Freeverb
+	 *  @class Tone.Freeverb is a reverb based on [Freeverb](https://ccrma.stanford.edu/~jos/pasp/Freeverb.html).
+	 *         Read more on reverb on [SoundOnSound](http://www.soundonsound.com/sos/may00/articles/reverb.htm).
 	 *
 	 *  @extends {Tone.Effect}
 	 *  @constructor
-	 *  @param {number} [roomSize=0.7] correlated to the decay time. 
-	 *                                 value between (0,1)
-	 *  @param {number} [dampening=0.5] filtering which is applied to the reverb. 
-	 *                                  value between [0,1]
+	 *  @param {NormalRange|Object} [roomSize] Correlated to the decay time. 
+	 *  @param {Frequency} [dampening] The cutoff frequency of a lowpass filter as part 
+	 *                                 of the reverb. 
+	 *  @example
+	 * var freeverb = new Tone.Freeverb().toMaster();
+	 * freeverb.dampening.value = 1000;
+	 * //routing synth through the reverb
+	 * var synth = new Tone.AMSynth().connect(freeverb);
 	 */
 	Tone.Freeverb = function(){
 
@@ -35,42 +41,37 @@ function(Tone){
 		Tone.StereoEffect.call(this, options);
 
 		/**
-		 *  the roomSize value between (0,1)
-		 *  @type {Tone.Signal}
+		 *  The roomSize value between. A larger roomSize
+		 *  will result in a longer decay. 
+		 *  @type {NormalRange}
+		 *  @signal
 		 */
-		this.roomSize = new Tone.Signal(options.roomSize);
+		this.roomSize = new Tone.Signal(options.roomSize, Tone.Type.NormalRange);
 
 		/**
-		 *  the amount of dampening
-		 *  value between [0,1]
-		 *  @type {Tone.Signal}
+		 *  The amount of dampening of the reverberant signal. 
+		 *  @type {Frequency}
+		 *  @signal
 		 */
-		this.dampening = new Tone.Signal(options.dampening);
-
-		/**
-		 *  scale the dampening
-		 *  @type {Tone.ScaleExp}
-		 *  @private
-		 */
-		this._dampeningScale = new Tone.ScaleExp(0, 1, 100, 8000, 0.5);
+		this.dampening = new Tone.Signal(options.dampening, Tone.Type.Frequency);
 
 		/**
 		 *  the comb filters
-		 *  @type {Array.<Tone.LowpassCombFilter>}
+		 *  @type {Array}
 		 *  @private
 		 */
 		this._combFilters = [];
 
 		/**
 		 *  the allpass filters on the left
-		 *  @type {Array.<BiqaudFilterNode>}
+		 *  @type {Array}
 		 *  @private
 		 */
 		this._allpassFiltersL = [];
 
 		/**
 		 *  the allpass filters on the right
-		 *  @type {Array.<BiqaudFilterNode>}
+		 *  @type {Array}
 		 *  @private
 		 */
 		this._allpassFiltersR = [];
@@ -95,21 +96,21 @@ function(Tone){
 		for (var c = 0; c < combFilterTunings.length; c++){
 			var lfpf = new Tone.LowpassCombFilter(combFilterTunings[c]);
 			if (c < combFilterTunings.length / 2){
-				this.chain(this.effectSendL, lfpf, this._allpassFiltersL[0]);
+				this.effectSendL.chain(lfpf, this._allpassFiltersL[0]);
 			} else {
-				this.chain(this.effectSendR, lfpf, this._allpassFiltersR[0]);
+				this.effectSendR.chain(lfpf, this._allpassFiltersR[0]);
 			}
 			this.roomSize.connect(lfpf.resonance);
-			this._dampeningScale.connect(lfpf.dampening);
+			this.dampening.connect(lfpf.dampening);
 			this._combFilters.push(lfpf);
 		}
 
 		//chain the allpass filters togetehr
-		this.chain.apply(this, this._allpassFiltersL);
-		this.chain.apply(this, this._allpassFiltersR);
+		this.connectSeries.apply(this, this._allpassFiltersL);
+		this.connectSeries.apply(this, this._allpassFiltersR);
 		this._allpassFiltersL[this._allpassFiltersL.length - 1].connect(this.effectReturnL);
 		this._allpassFiltersR[this._allpassFiltersR.length - 1].connect(this.effectReturnR);
-		this.dampening.connect(this._dampeningScale);
+		this._readOnly(["roomSize", "dampening"]);
 	};
 
 	Tone.extend(Tone.Freeverb, Tone.StereoEffect);
@@ -120,37 +121,12 @@ function(Tone){
 	 */
 	Tone.Freeverb.defaults = {
 		"roomSize" : 0.7, 
-		"dampening" : 0.5
+		"dampening" : 3000
 	};
 
 	/**
-	 *  set the room size
-	 *  @param {number} roomsize roomsize value between 0-1
-	 */
-	Tone.Freeverb.prototype.setRoomSize = function(roomsize) {
-		this.roomSize.setValue(roomsize);
-	};
-
-	/**
-	 *  set the dampening
-	 *  @param {number} dampening dampening between 0-1
-	 */
-	Tone.Freeverb.prototype.setDampening = function(dampening) {
-		this.dampening.setValue(dampening);
-	};
-
-	/**
-	 *  set multiple parameters at once with an object
-	 *  @param {Object} params the parameters as an object
-	 */
-	Tone.Freeverb.prototype.set = function(params){
-		if (!this.isUndef(params.dampening)) this.setDampening(params.dampening);
-		if (!this.isUndef(params.roomSize)) this.setRoomSize(params.roomSize);
-		Tone.StereoEffect.prototype.set.call(this, params);
-	};
-
-	/**
-	 *  clean up
+	 *  Clean up. 
+	 *  @returns {Tone.Freeverb} this
 	 */
 	Tone.Freeverb.prototype.dispose = function(){
 		Tone.StereoEffect.prototype.dispose.call(this);
@@ -169,12 +145,12 @@ function(Tone){
 			this._combFilters[cf] = null;
 		}
 		this._combFilters = null;
+		this._writable(["roomSize", "dampening"]);
 		this.roomSize.dispose();
-		this.dampening.dispose();
-		this._dampeningScale.dispose();
 		this.roomSize = null;
+		this.dampening.dispose();
 		this.dampening = null;
-		this._dampeningScale = null;
+		return this;
 	};
 
 	return Tone.Freeverb;

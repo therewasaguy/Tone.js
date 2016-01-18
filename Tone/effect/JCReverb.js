@@ -28,13 +28,20 @@ function(Tone){
 	var allpassFilterFreqs = [347, 113, 37];
 
 	/**
-	 *  @class a simple Schroeder Reverberators tuned by John Chowning in 1970
-	 *         made up of 3 allpass filters and 4 feedback comb filters. 
-	 *         https://ccrma.stanford.edu/~jos/pasp/Schroeder_Reverberators.html
+	 *  @class Tone.JCReverb is a simple [Schroeder Reverberator](https://ccrma.stanford.edu/~jos/pasp/Schroeder_Reverberators.html)
+	 *         tuned by John Chowning in 1970.
+	 *         It is made up of three allpass filters and four Tone.FeedbackCombFilter. 
+	 *         
 	 *
 	 *  @extends {Tone.Effect}
 	 *  @constructor
-	 *  @param {number} roomSize coorelates to the decay time
+	 *  @param {NormalRange|Object} [roomSize] Coorelates to the decay time.
+	 *  @example
+	 * var reverb = new Tone.JCReverb(0.4).connect(Tone.Master);
+	 * var delay = new Tone.FeedbackDelay(0.5); 
+	 * //connecting the synth to reverb through delay
+	 * var synth = new Tone.DuoSynth().chain(delay, reverb);
+	 * synth.triggerAttackRelease("A4","8n");
 	 */
 	Tone.JCReverb = function(){
 
@@ -43,27 +50,28 @@ function(Tone){
 
 		/**
 		 *  room size control values between [0,1]
-		 *  @type {Tone.Signal}
+		 *  @type {NormalRange}
+		 *  @signal
 		 */
-		this.roomSize = new Tone.Signal(options.roomSize);
+		this.roomSize = new Tone.Signal(options.roomSize, Tone.Type.NormalRange);
 
 		/**
 		 *  scale the room size
 		 *  @type {Tone.Scale}
 		 *  @private
 		 */
-		this._scaleRoomSize = new Tone.Scale(0, 1, -0.733, 0.197);
+		this._scaleRoomSize = new Tone.Scale(-0.733, 0.197);
 
 		/**
 		 *  a series of allpass filters
-		 *  @type {Array.<BiquadFilterNode>}
+		 *  @type {Array}
 		 *  @private
 		 */
 		this._allpassFilters = [];
 
 		/**
 		 *  parallel feedback comb filters
-		 *  @type {Array.<Tone.FeedbackCombFilter>}
+		 *  @type {Array}
 		 *  @private
 		 */
 		this._feedbackCombFilters = [];
@@ -78,9 +86,9 @@ function(Tone){
 
 		//and the comb filters
 		for (var cf = 0; cf < combFilterDelayTimes.length; cf++) {
-			var fbcf = new Tone.FeedbackCombFilter(combFilterDelayTimes[cf]);
+			var fbcf = new Tone.FeedbackCombFilter(combFilterDelayTimes[cf], 0.1);
 			this._scaleRoomSize.connect(fbcf.resonance);
-			fbcf.resonance.setValue(combFilterResonances[cf]);
+			fbcf.resonance.value = combFilterResonances[cf];
 			this._allpassFilters[this._allpassFilters.length - 1].connect(fbcf);
 			if (cf < combFilterDelayTimes.length / 2){
 				fbcf.connect(this.effectReturnL);
@@ -92,9 +100,10 @@ function(Tone){
 
 		//chain the allpass filters together
 		this.roomSize.connect(this._scaleRoomSize);
-		this.chain.apply(this, this._allpassFilters);
+		this.connectSeries.apply(this, this._allpassFilters);
 		this.effectSendL.connect(this._allpassFilters[0]);
 		this.effectSendR.connect(this._allpassFilters[0]);
+		this._readOnly(["roomSize"]);
 	};
 
 	Tone.extend(Tone.JCReverb, Tone.StereoEffect);
@@ -110,24 +119,8 @@ function(Tone){
 	};
 
 	/**
-	 *  set the room size
-	 *  @param {number} roomsize roomsize value between 0-1
-	 */
-	Tone.JCReverb.prototype.setRoomSize = function(roomsize) {
-		this.roomSize.setValue(roomsize);
-	};
-
-	/**
-	 *  set multiple parameters at once with an object
-	 *  @param {Object} params the parameters as an object
-	 */
-	Tone.JCReverb.prototype.set = function(params){
-		if (!this.isUndef(params.roomSize)) this.setRoomSize(params.roomSize);
-		Tone.StereoEffect.prototype.set.call(this, params);
-	};
-
-	/**
-	 *  clean up
+	 *  Clean up. 
+	 *  @returns {Tone.JCReverb} this
 	 */
 	Tone.JCReverb.prototype.dispose = function(){
 		Tone.StereoEffect.prototype.dispose.call(this);
@@ -141,10 +134,12 @@ function(Tone){
 			this._feedbackCombFilters[fbcf] = null;
 		}
 		this._feedbackCombFilters = null;
+		this._writable(["roomSize"]);
 		this.roomSize.dispose();
-		this._scaleRoomSize.dispose();
 		this.roomSize = null;
+		this._scaleRoomSize.dispose();
 		this._scaleRoomSize = null;
+		return this;
 	};
 
 	return Tone.JCReverb;

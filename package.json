@@ -1,11 +1,20 @@
 {
   "name": "tone",
-  "version": "0.7.0",
+  "version": "0.6.1",
   "description": "A Web Audio framework for making interactive music in the browser.",
-  "main": "Tone.js",
+  "main": "build/Tone.js",
+  "files": [
+    "./README.md",
+    "build/Tone.min.js",
+    "build/Tone.js",
+    "Tone"
+  ],
+  "scripts": {
+    "test": "cd gulp && gulp test"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/tonejs/Tone.js.git"
+    "url": "https://github.com/Tonejs/Tone.js.git"
   },
   "keywords": [
     "Web Audio",
@@ -15,16 +24,12 @@
     "Effect",
     "Instrument",
     "DSP",
-    "Signal Processing"
+    "Signal Processing",
+    "Interactive Music"
   ],
-  "author": {
-    "name": "Yotam Mann",
-    "email": "yotammann@gmail.com",
-    "url": "http://yotammann.info/"
-  },
+  "author": "Yotam Mann <yotammann@gmail.com> (http://yotammann.info/)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/tonejs/Tone.js/issues"
-  },
-  "homepage": "https://github.com/tonejs/Tone.js"
+    "url": "https://github.com/Tonejs/Tone.js/issues"
+  }
 }

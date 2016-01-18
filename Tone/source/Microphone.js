@@ -1,104 +1,43 @@
-define(["Tone/core/Tone", "Tone/source/Source"], function(Tone){
+define(["Tone/core/Tone", "Tone/source/ExternalInput"], function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class  WebRTC Microphone. 
-	 *          CHROME ONLY (for now) because of the 
-	 *          use of the MediaStreamAudioSourceNode
+	 *  @class  Opens up the default source (typically the microphone).
 	 *
 	 *  @constructor
-	 *  @extends {Tone.Source}
-	 *  @param {number=} inputNum 
+	 *  @extends {Tone.ExternalInput}
+	 *  @example
+	 *  //mic will feedback if played through master
+	 *  var mic = new Tone.Microphone();
+	 *  mic.open(function(){
+	 *  	//start the mic at ten seconds
+	 *  	mic.start(10);
+	 *  });
+	 *  //stop the mic
+	 *  mic.stop(20);
 	 */
-	Tone.Microphone = function(inputNum){
-		Tone.Source.call(this);
+	Tone.Microphone = function(){
 
-		/**
-		 *  @type {MediaStreamAudioSourceNode}
-		 *  @private
-		 */
-		this._mediaStream = null;
-		/**
-		 *  @type {LocalMediaStream}
-		 *  @private
-		 */
-		this._stream = null;
-		/**
-		 *  @type {Object}
-		 *  @private
-		 */
-		this.constraints = {"audio" : true};
+		Tone.ExternalInput.call(this, 0);
 
-		//get the option
-		var self = this;
-		MediaStreamTrack.getSources(function (media_sources) {
-			if (inputNum < media_sources.length){
-				self.constraints.audio = {
-					optional : [{ sourceId: media_sources[inputNum].id}]
-				};
-			}
-		});		
 	};
 
-	Tone.extend(Tone.Microphone, Tone.Source);
+	Tone.extend(Tone.Microphone, Tone.ExternalInput);
 
 	/**
-	 *  start the stream. 
+	 *  If getUserMedia is supported by the browser.
+	 *  @type  {Boolean}
+	 *  @memberOf Tone.Microphone#
+	 *  @name supported
+	 *  @static
+	 *  @readOnly
 	 */
-	Tone.Microphone.prototype.start = function(){
-		if (this.state === Tone.Source.State.STOPPED){
-			this.state = Tone.Source.State.STARTED;
-				navigator.getUserMedia(this.constraints, 
-					this._onStream.bind(this), this._onStreamError.bind(this));
+	Object.defineProperty(Tone.Microphone, "supported", {
+		get : function(){
+			return Tone.ExternalInput.supported;
 		}
-	};
-
-	/**
-	 *  stop the stream. 
-	 */
-	Tone.Microphone.prototype.stop = function(){
-		if (this._stream && this.state === Tone.Source.State.STARTED){
-			this.state = Tone.Source.State.STOPPED;
-			this._stream.stop();
-		}
-	};
-
-	/**
-	 *  called when the stream is successfully setup
-	 *  @param   {LocalMediaStream} stream 
-	 *  @private
-	 */
-	Tone.Microphone.prototype._onStream = function(stream) {
-		this._stream = stream;
-		// Wrap a MediaStreamSourceNode around the live input stream.
-		this._mediaStream = this.context.createMediaStreamSource(stream);
-		this._mediaStream.connect(this.output);
-	};
-
-	/**
-	 *  called on error
-	 *  @param   {Error} e 
-	 *  @private
-	 */
-	Tone.Microphone.prototype._onStreamError = function(e) {
-		console.error(e);
-	};
-
-	/**
-	 *  clean up
-	 */
-	Tone.Microphone.prototype.dispose = function() {
-		Tone.Source.prototype.dispose.call(this);
-		this._stream.disconnect();
-		this._mediaStream.disconnect();
-		this._stream = null;
-		this._mediaStream = null;
-	};
-
-	//polyfill
-	navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || 
-		navigator.mozGetUserMedia || navigator.msGetUserMedia;
+	});
 
 	return Tone.Microphone;
 });

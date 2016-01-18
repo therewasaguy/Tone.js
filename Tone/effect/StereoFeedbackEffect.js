@@ -4,7 +4,8 @@ function(Tone){
 	"use strict";
 
 	/**
-	 *  @class A stereo feedback effect where the feedback is on the same channel
+	 *  @class Base class for stereo feedback effects where the effectReturn
+	 *         is fed back into the same channel. 
 	 *
 	 *	@constructor
 	 *	@extends {Tone.FeedbackEffect}
@@ -16,16 +17,10 @@ function(Tone){
 
 		/**
 		 *  controls the amount of feedback
-		 *  @type {Tone.Signal}
+		 *  @type {NormalRange}
+		 *  @signal
 		 */
-		this.feedback = new Tone.Signal(options.feedback);
-
-		/**
-		 *  scales the feedback in half
-		 *  @type {Tone.Multiply}
-		 *  @private
-		 */
-		this._half = new Tone.Multiply(0.5);
+		this.feedback = new Tone.Signal(options.feedback, Tone.Type.NormalRange);
 
 		/**
 		 *  the left side feeback
@@ -42,27 +37,28 @@ function(Tone){
 		this._feedbackR = this.context.createGain();
 
 		//connect it up
-		this.chain(this.effectReturnL, this._feedbackL, this.effectSendL);
-		this.chain(this.effectReturnR, this._feedbackR, this.effectSendR);
-		this.feedback.connect(this._half);
-		this.fan(this._half, this._feedbackL.gain, this._feedbackR.gain);
+		this.effectReturnL.chain(this._feedbackL, this.effectSendL);
+		this.effectReturnR.chain(this._feedbackR, this.effectSendR);
+		this.feedback.fan(this._feedbackL.gain, this._feedbackR.gain);
+		this._readOnly(["feedback"]);
 	};
 
 	Tone.extend(Tone.StereoFeedbackEffect, Tone.FeedbackEffect);
 
 	/**
 	 *  clean up
+	 *  @returns {Tone.StereoFeedbackEffect} this
 	 */
 	Tone.StereoFeedbackEffect.prototype.dispose = function(){
 		Tone.StereoEffect.prototype.dispose.call(this);
+		this._writable(["feedback"]);
 		this.feedback.dispose();
-		this._half.dispose();
-		this._feedbackL.disconnect();
-		this._feedbackR.disconnect();
 		this.feedback = null;
+		this._feedbackL.disconnect();
 		this._feedbackL = null;
+		this._feedbackR.disconnect();
 		this._feedbackR = null;
-		this._half = null;
+		return this;
 	};
 
 	return Tone.StereoFeedbackEffect;

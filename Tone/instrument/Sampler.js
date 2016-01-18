@@ -1,67 +1,103 @@
-define(["Tone/core/Tone", "Tone/source/Player", "Tone/component/AmplitudeEnvelope", "Tone/component/Filter", "Tone/instrument/Instrument"], 
+define(["Tone/core/Tone", "Tone/source/Player", "Tone/component/AmplitudeEnvelope", "Tone/component/FrequencyEnvelope",
+	"Tone/component/Filter", "Tone/instrument/Instrument"], 
 function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class A simple sampler instrument which plays an audio buffer 
-	 *         through an amplitude envelope and optionally a filter
-	 *         envelope.
+	 *  @class A sampler instrument which plays an audio buffer 
+	 *         through an amplitude envelope and a filter envelope. The sampler takes
+	 *         an Object in the constructor which maps a sample name to the URL 
+	 *         of the sample. Nested Objects will be flattened and can be accessed using
+	 *         a dot notation (see the example).
+	 *         <img src="https://docs.google.com/drawings/d/1UK-gi_hxzKDz9Dh4ByyOptuagMOQxv52WxN12HwvtW8/pub?w=931&h=241">
 	 *
 	 *  @constructor
 	 *  @extends {Tone.Instrument}
-	 *  @param {string|object} url the url of the audio file
-	 *  @param {function} onload called when the sample has been loaded
+	 *  @param {Object|string} urls the urls of the audio file
+	 *  @param {Object} [options] the options object for the synth
+	 *  @example
+	 * var sampler = new Sampler({
+	 * 	A : {
+	 * 		1 : "./audio/casio/A1.mp3",
+	 * 		2 : "./audio/casio/A2.mp3",
+	 * 	},
+	 * 	"B.1" : "./audio/casio/B1.mp3",
+	 * }).toMaster();
+	 * 
+	 * //listen for when all the samples have loaded
+	 * Tone.Buffer.onload = function(){
+	 * 	sampler.triggerAttack("A.1", time, velocity);
+	 * };
 	 */
-	Tone.Sampler = function(){
+	Tone.Sampler = function(urls, options){
 
-		Tone.Instrument.call(this);
-		var options = this.optionsObject(arguments, ["url", "onload"], Tone.Sampler.defaults);
+		options = this.defaultArg(options, Tone.Sampler.defaults);
+		Tone.Instrument.call(this, options);
 
 		/**
-		 *  the sample player
+		 *  The sample player.
 		 *  @type {Tone.Player}
 		 */
-		this.player = new Tone.Player({
-			url : options.url, 
-			onload : options.onload,
-			retrigger : true
-		});
-		this.player.set(options.player);
+		this.player = new Tone.Player(options.player);
+		this.player.retrigger = true;
 
 		/**
-		 *  the amplitude envelope
-		 *  @type {Tone.Envelope}
+		 *  the buffers
+		 *  @type {Object}
+		 *  @private
+		 */
+		this._buffers = {};
+
+		/**
+		 *  The amplitude envelope. 
+		 *  @type {Tone.AmplitudeEnvelope}
 		 */
 		this.envelope = new Tone.AmplitudeEnvelope(options.envelope);
 
 		/**
-		 *  the filter envelope
-		 *  @type {Tone.Envelope}
+		 *  The filter envelope. 
+		 *  @type {Tone.FrequencyEnvelope}
 		 */
-		this.filterEnvelope = new Tone.Envelope(options.filterEnvelope);
+		this.filterEnvelope = new Tone.FrequencyEnvelope(options.filterEnvelope);
 
 		/**
-		 *  the filter
-		 *  @type {BiquadFilterNode}
+		 *  The name of the current sample. 
+		 *  @type {string}
+		 *  @private
+		 */
+		this._sample = options.sample;
+
+		/**
+		 * the private reference to the pitch
+		 * @type {number}
+		 * @private
+		 */
+		this._pitch = options.pitch;
+
+		/**
+		 *  The filter.
+		 *  @type {Tone.Filter}
 		 */
 		this.filter = new Tone.Filter(options.filter);
 
-		//connections
-		this.chain(this.player, this.filter, this.envelope, this.output);
+		//connections / setup
+		this._loadBuffers(urls);
+		this.pitch = options.pitch;
+		this.player.chain(this.filter, this.envelope, this.output);
 		this.filterEnvelope.connect(this.filter.frequency);
+		this._readOnly(["player", "filterEnvelope", "envelope", "filter"]);
 	};
 
 	Tone.extend(Tone.Sampler, Tone.Instrument);
 
 	/**
 	 *  the default parameters
-	 *
 	 *  @static
 	 */
 	Tone.Sampler.defaults = {
-		"url" : undefined,
-		"onload" : function(){},
+		"sample" : 0,
+		"pitch" : 0,
 		"player" : {
 			"loop" : false,
 		},
@@ -76,8 +112,8 @@ function(Tone){
 			"decay" : 0.001,
 			"sustain" : 1,
 			"release" : 0.5,
-			"min" : 20,
-			"max" : 20000
+			"baseFrequency" : 20,
+			"octaves" : 10,
 		},
 		"filter" : {
 			"type" : "lowpass"
@@ -85,49 +121,156 @@ function(Tone){
 	};
 
 	/**
-	 *  set the parameters in bulk
-	 *  @param {Object} param
+	 *  load the buffers
+	 *  @param   {Object} urls   the urls
+	 *  @private
 	 */
-	 Tone.Sampler.prototype.set = function(params){
-	 	if (!this.isUndef(params.filterEnvelope)) this.filterEnvelope.set(params.filterEnvelope);
-	 	if (!this.isUndef(params.envelope)) this.envelope.set(params.envelope);
-	 	if (!this.isUndef(params.player)) this.player.set(params.player);
-	 	if (!this.isUndef(params.filter)) this.filter.set(params.filter);
-	 };
-
-	/**
-	 *  start the sample
-	 *
-	 *  @param {number} [note=0] the interval in the sample should be played at 0 = no change
-	 *  @param {Tone.Time} [time=now] the time when the note should start
-	 *  @param {number} [velocity=1] the velocity of the note
-	 */
-	Tone.Sampler.prototype.triggerAttack = function(note, time, velocity){
-		time = this.toSeconds(time);
-		note = this.defaultArg(note, 0);
-		this.player.setPlaybackRate(this.intervalToFrequencyRatio(note), time);
-		this.player.start(time, 0);
-		this.envelope.triggerAttack(time, velocity);
-		this.filterEnvelope.triggerAttack(time);
+	Tone.Sampler.prototype._loadBuffers = function(urls){
+		if (this.isString(urls)){
+			this._buffers["0"] = new Tone.Buffer(urls, function(){
+				this.sample = "0";
+			}.bind(this));
+		} else {
+			urls = this._flattenUrls(urls);
+			for (var buffName in urls){
+				this._sample = buffName;
+				var urlString = urls[buffName];
+				this._buffers[buffName] = new Tone.Buffer(urlString);
+			}
+		}
 	};
 
 	/**
-	 *  start the release portion of the sample
+	 *  Flatten an object into a single depth object. 
+	 *  thanks to https://gist.github.com/penguinboy/762197
+	 *  @param   {Object} ob 	
+	 *  @return  {Object}    
+	 *  @private
+	 */
+	Tone.Sampler.prototype._flattenUrls = function(ob) {
+		var toReturn = {};
+		for (var i in ob) {
+			if (!ob.hasOwnProperty(i)) continue;
+			if (this.isObject(ob[i])) {
+				var flatObject = this._flattenUrls(ob[i]);
+				for (var x in flatObject) {
+					if (!flatObject.hasOwnProperty(x)) continue;
+					toReturn[i + "." + x] = flatObject[x];
+				}
+			} else {
+				toReturn[i] = ob[i];
+			}
+		}
+		return toReturn;
+	};
+
+	/**
+	 *  Start the sample and simultaneously trigger the envelopes. 
+	 *  @param {string=} sample The name of the sample to trigger, defaults to
+	 *                          the last sample used. 
+	 *  @param {Time} [time=now] The time when the sample should start
+	 *  @param {number} [velocity=1] The velocity of the note
+	 *  @returns {Tone.Sampler} this
+	 *  @example
+	 * sampler.triggerAttack("B.1");
+	 */
+	Tone.Sampler.prototype.triggerAttack = function(name, time, velocity){
+		time = this.toSeconds(time);
+		if (name){
+			this.sample = name;
+		}
+		this.player.start(time);
+		this.envelope.triggerAttack(time, velocity);
+		this.filterEnvelope.triggerAttack(time);
+		return this;
+	};
+
+	/**
+	 *  Start the release portion of the sample. Will stop the sample once the 
+	 *  envelope has fully released. 
 	 *  
-	 *  @param {Tone.Time} [time=now] the time when the note should release
+	 *  @param {Time} [time=now] The time when the note should release
+	 *  @returns {Tone.Sampler} this
+	 *  @example
+	 * sampler.triggerRelease();
 	 */
 	Tone.Sampler.prototype.triggerRelease = function(time){
 		time = this.toSeconds(time);
 		this.filterEnvelope.triggerRelease(time);
 		this.envelope.triggerRelease(time);
 		this.player.stop(this.toSeconds(this.envelope.release) + time);
+		return this;
 	};
 
 	/**
-	 *  clean up
+	 * The name of the sample to trigger.
+	 * @memberOf Tone.Sampler#
+	 * @type {number|string}
+	 * @name sample
+	 * @example
+	 * //set the sample to "A.2" for next time the sample is triggered
+	 * sampler.sample = "A.2";
+	 */
+	Object.defineProperty(Tone.Sampler.prototype, "sample", {
+		get : function(){
+			return this._sample;
+		},
+		set : function(name){
+			if (this._buffers.hasOwnProperty(name)){
+				this._sample = name;
+				this.player.buffer = this._buffers[name];
+			} else {
+				throw new Error("Sampler does not have a sample named "+name);
+			}
+		}
+	});
+
+	/**
+	 * The direction the buffer should play in
+	 * @memberOf Tone.Sampler#
+	 * @type {boolean}
+	 * @name reverse
+	 */
+	Object.defineProperty(Tone.Sampler.prototype, "reverse", {
+		get : function(){
+			for (var i in this._buffers){
+				return this._buffers[i].reverse;
+			}
+		}, 
+		set : function(rev){
+			for (var i in this._buffers){
+				this._buffers[i].reverse = rev;
+			}
+		}
+	});
+
+	/**
+	 * Repitch the sampled note by some interval (measured
+	 * in semi-tones). 
+	 * @memberOf Tone.Sampler#
+	 * @type {Interval}
+	 * @name pitch
+	 * @example
+	 * sampler.pitch = -12; //down one octave
+	 * sampler.pitch = 7; //up a fifth
+	 */
+	Object.defineProperty(Tone.Sampler.prototype, "pitch", {
+		get : function(){
+			return this._pitch;
+		},
+		set : function(interval){
+			this._pitch = interval;
+			this.player.playbackRate = this.intervalToFrequencyRatio(interval);
+		}
+	});
+
+	/**
+	 *  Clean up.
+	 *  @returns {Tone.Sampler} this
 	 */
 	Tone.Sampler.prototype.dispose = function(){
 		Tone.Instrument.prototype.dispose.call(this);
+		this._writable(["player", "filterEnvelope", "envelope", "filter"]);
 		this.player.dispose();
 		this.filterEnvelope.dispose();
 		this.envelope.dispose();
@@ -136,6 +279,12 @@ function(Tone){
 		this.filterEnvelope = null;
 		this.envelope = null;
 		this.filter = null;
+		for (var sample in this._buffers){
+			this._buffers[sample].dispose();
+			this._buffers[sample] = null;
+		}
+		this._buffers = null;
+		return this;
 	};
 
 	return Tone.Sampler;

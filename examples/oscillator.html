@@ -1,75 +1,69 @@
+<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
 	<title>Oscillator</title>
 	
-	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<link rel="icon" type="image/png" sizes="174x174" href="./style/favicon.png">
 
-	<script type="text/javascript" src="./deps/jquery.min.js"></script>
-	<script type="text/javascript" src="./deps/jquery-ui.js"></script>
-	<script type="text/javascript" src="./deps/jquery.ui.touch-punch.js"></script>
 	<script type="text/javascript" src="../build/Tone.js"></script>
-	<script type="text/javascript" src="./Widgets.js"></script>
-	<script type="text/javascript" src="./ExampleList.js"></script>
-	<link rel="stylesheet" type="text/css" href="./style/widgets.css">
-	<link rel="stylesheet" type="text/css" href="./style/jquery-ui.css">
+	<script type="text/javascript" src="./scripts/jquery.min.js"></script>
+	<script type="text/javascript" src="./scripts/draggabilly.js"></script>
+	<script type="text/javascript" src="./scripts/Interface.js"></script>
+	<script type="text/javascript" src="./scripts/Logo.js"></script>
+
+	<link rel="stylesheet" type="text/css" href="./style/examples.css">
+
+	<script type="text/javascript">
+		// jshint ignore: start
+	</script>
 
 </head>
 <body>
-	<div id="Container">
+	<div id="Content">
+		<div id="Title">Oscillator</div>
 		<div id="Explanation">
-			Oscillator
-			<br>
-			<br>
-			An oscillator with an LFO attached to the detune control. 
+			Click and drag the dot to hear the oscillator. The x-axis controls the freqency of the oscillator and the y-axis controls the volume.
+			<br><br>
+			<a href="http://tonejs.org/docs/#Oscillator">Tone.Oscillator</a> docs.
 		</div>
-		<div id="Content">
-		</div>
+		<div id="DragContainer"></div>
 	</div>
-	<script type="text/javascript">
-
-		/* global Tone, GUI*/
-
-		var osc = new Tone.Oscillator(440, "sine");
-
-		var vibrato = new Tone.LFO(6, -25, 25);
-		vibrato.start();
-
-		//connect it to the output
-		osc.toMaster();
-		osc.setVolume(-10);
-		vibrato.connect(osc.detune);
-
-		// GUI //
-
+	<script id="ToneCode" type="text/javascript">
+		var osc = new Tone.Oscillator({
+			"frequency" : 440,
+			"volume" : -10
+		}).toMaster();
+	</script>
+	<script id="GUI" type="text/javascript">
 		$(function(){
-			var content = $("#Content");
-			new GUI.TopBar(Tone);
-			new GUI.Checkbox(content, function(on){
-				if (on){
+
+			new Interface.Dragger({
+				tone : osc,
+				x : {
+					param : "frequency",
+					min : 60,
+					max : 2000,
+					exp : 2
+				},
+				y : {
+					param : "volume",
+					min : -40,
+					max : 0
+				},
+				start : function(){
 					osc.start();
-				} else {
-					osc.stop();
+					Tone.Master.volume.rampTo(0, 0.05);
+				},
+				end : function(){
+					//so it doesn't click
+					Tone.Master.volume.rampTo(-Infinity, 0.05);
 				}
-			}, "start", "stop");
-			new GUI.Oscillator(content, osc, "oscillator");
-			new GUI.Oscillator(content, vibrato.oscillator, "vibrato osc");
-		});
+			});
+		})
 
 		
 	</script>
-
-	<style type="text/css">
-		#Content {
-			text-align: left;
-			height: 110px;
-			width: 240px;
-		}
-		.Checkbox {
-			width: 100%;
-		}
-		.Oscillator {
-			margin-top: 10px;
-		}
-	</style>
 </body>
 </html>

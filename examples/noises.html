@@ -1,80 +1,71 @@
+<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
 	<title>NOISES</title>
 
-	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<link rel="icon" type="image/png" sizes="174x174" href="./style/favicon.png">
 
-	<script type="text/javascript" src="./deps/jquery.min.js"></script>
-	<script type="text/javascript" src="./deps/jquery-ui.js"></script>
-	<script type="text/javascript" src="./deps/jquery.ui.touch-punch.js"></script>
 	<script type="text/javascript" src="../build/Tone.js"></script>
-	<script type="text/javascript" src="./Widgets.js"></script>
-	<script type="text/javascript" src="./ExampleList.js"></script>
-	<link rel="stylesheet" type="text/css" href="./style/widgets.css">
-	<link rel="stylesheet" type="text/css" href="./style/jquery-ui.css">
+	<script type="text/javascript" src="./scripts/jquery.min.js"></script>
+	<script type="text/javascript" src="./scripts/draggabilly.js"></script>
+	<script type="text/javascript" src="./scripts/Interface.js"></script>
+	<script type="text/javascript" src="./scripts/Logo.js"></script>
+
+	<link rel="stylesheet" type="text/css" href="./style/examples.css">
+
+	<script type="text/javascript">
+		// jshint ignore: start
+	</script>
 
 </head>
 <body>
-
-	<div id="Container">
+	<style type="text/css">
+		.Dragger#Noise {
+			left: 50%;
+		}
+	</style>
+	<div id="Content">
+		<div id="Title">Noise</div>
 		<div id="Explanation">
-			Noise
-			<br>
-			<br>
-			Tone has 3 different types of noise. Here's a little noise song. 
+			<a href="http://tonejs.org/docs/#Noise">Tone.Noise</a>
+			has 3 different types of noise. Careful, it's loud!
 		</div>
-		<div id="Content">
-			<div id="Button"></div>
-			<div id='Noise'></div>
-		</div>
-	<script type="text/javascript">
-
-		/* globals Tone, GUI */
-
-		var noise = new Tone.Noise();
-		noise.setVolume(-20);
-		noise.toMaster();
-
-		var noiseTypes = ["white", "brown", "pink"];
-
-		Tone.Transport.setInterval(function(time){
-			//set a random noise type
-			var randomIndex = Math.floor(Math.random()* noiseTypes.length);
-			var randomNoise = noiseTypes[randomIndex];
-			noise.setType(randomNoise, time);
-			$("#Noise").text(randomNoise);
-		}, "8n");
-
-		//stop it after 4 measures
-		Tone.Transport.setTimeout(function(time){
-			noise.stop(time);
-			Tone.Transport.stop();
-			$("#Noise").text("done");
-			setTimeout(function(){
-				$("#Noise").text("");
-			}, 500);
-		}, "4m");
-
-		// GUI //
-
-		new GUI.TopBar(Tone);
-
-		new GUI.Momentary($("#Button"), function(){
-			Tone.Transport.start();
-			noise.start();
-			$("#Button").remove();
-		}, "start", "");
-
+		<div id="DragContainer"></div>
+	</div>
+	<script id="ToneCode" type="text/javascript">
+		//make the noise and connect it to the output
+		var noise = new Tone.Noise({
+			"volume" : -20,
+			"type" : "brown"
+		}).toMaster();
 	</script>
 
-	<style type="text/css">
-	#Content {
-		text-align: center;
-		width: 120px;
-	}
-	#Content .Momentary{
-		width: 100%;
-	}
-	</style>
+	<script id="GUI" type="text/javascript">
+		$(function(){
+
+			new Interface.Dragger({
+				tone : noise,
+				y : {
+					param : "volume",
+					min : -40,
+					max : 0
+				},
+				x : {
+					param : "type",
+					options : ["white", "brown", "pink"]
+				},
+				start : function(){
+					noise.start();
+					Tone.Master.volume.rampTo(0, 0.05);
+				},
+				end : function(){
+					//so it doesn't click
+					Tone.Master.volume.rampTo(-Infinity, 0.05);
+				}
+			});
+		})			
+	</script>
 </body>
 </html>

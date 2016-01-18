@@ -1,64 +1,78 @@
-define(["Tone/core/Tone", "Tone/source/Source", "Tone/source/PulseOscillator", "Tone/source/Oscillator"], 
+define(["Tone/core/Tone", "Tone/source/Source", "Tone/source/PulseOscillator", "Tone/source/Oscillator", "Tone/signal/Multiply"], 
 function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class takes an array of Oscillator descriptions and mixes them together
-	 *         with the same detune and frequency controls. 
+	 *  @class Tone.PWMOscillator modulates the width of a Tone.PulseOscillator 
+	 *         at the modulationFrequency. This has the effect of continuously
+	 *         changing the timbre of the oscillator by altering the harmonics 
+	 *         generated.
 	 *
 	 *  @extends {Tone.Oscillator}
 	 *  @constructor
-	 *  @param {frequency} frequency frequency of the oscillator (meaningless for noise types)
-	 *  @param {string} type the type of the oscillator
+	 *  @param {Frequency} frequency The starting frequency of the oscillator. 
+	 *  @param {Frequency} modulationFrequency The modulation frequency of the width of the pulse. 
+	 *  @example
+	 *  var pwm = new Tone.PWMOscillator("Ab3", 0.3).toMaster().start();
 	 */
 	Tone.PWMOscillator = function(){
 		var options = this.optionsObject(arguments, ["frequency", "modulationFrequency"], Tone.PWMOscillator.defaults);
-		Tone.Source.call(this);
+		Tone.Source.call(this, options);
 
 		/**
 		 *  the pulse oscillator
+		 *  @type {Tone.PulseOscillator}
+		 *  @private
 		 */
 		this._pulse = new Tone.PulseOscillator(options.modulationFrequency);
 		//change the pulse oscillator type
-		this._pulse._sawtooth.setType("sine");
+		this._pulse._sawtooth.type = "sine";
 
 		/**
 		 *  the modulator
+		 *  @type {Tone.Oscillator}
+		 *  @private
 		 */
 		this._modulator = new Tone.Oscillator({
 			"frequency" : options.frequency,
-			"detune" : options.detune
+			"detune" : options.detune,
+			"phase" : options.phase
 		});
 
 		/**
-		 *  the frequency control
-		 *  @type {Tone.Signal}
+		 *  Scale the oscillator so it doesn't go silent 
+		 *  at the extreme values.
+		 *  @type {Tone.Multiply}
+		 *  @private
+		 */
+		this._scale = new Tone.Multiply(1.01);
+
+		/**
+		 *  The frequency control.
+		 *  @type {Frequency}
+		 *  @signal
 		 */
 		this.frequency = this._modulator.frequency;
 
 		/**
-		 *  the detune control
-		 *  @type {Tone.Signal}
+		 *  The detune of the oscillator.
+		 *  @type {Cents}
+		 *  @signal
 		 */
 		this.detune = this._modulator.detune;
 
 		/**
-		 *  the modulation rate of the oscillator
-		 *  @type {Tone.Signal}
+		 *  The modulation rate of the oscillator. 
+		 *  @type {Frequency}
+		 *  @signal
 		 */
-		this.modulationFrequency = this._pulse.frequency;
-
-		/**
-		 *  callback which is invoked when the oscillator is stoped
-		 *  @type {function()}
-		 */
-		this.onended = options.onended;
+		this.modulationFrequency = this._pulse.frequency;	
 
 		//connections
-		this._modulator.connect(this._pulse.width);
+		this._modulator.chain(this._scale, this._pulse.width);
 		this._pulse.connect(this.output);
-		this._pulse.onended = this._onended.bind(this);
+		this._readOnly(["modulationFrequency", "frequency", "detune"]);
 	};
 
 	Tone.extend(Tone.PWMOscillator, Tone.Oscillator);
@@ -72,83 +86,90 @@ function(Tone){
 	Tone.PWMOscillator.defaults = {
 		"frequency" : 440,
 		"detune" : 0,
+		"phase" : 0,
 		"modulationFrequency" : 0.4,
-		"onended" : function(){}
 	};
 
 	/**
 	 *  start the oscillator
-	 *  
-	 *  @param  {Tone.Time} [time=now]
+	 *  @param  {Time} [time=now]
+	 *  @private
 	 */
-	Tone.PWMOscillator.prototype.start = function(time){
-		if (this.state === Tone.Source.State.STOPPED){
-			this.state = Tone.Source.State.STARTED;
-			time = this.toSeconds(time);
-			this._modulator.start(time);
-			this._pulse.start(time);
-		}
+	Tone.PWMOscillator.prototype._start = function(time){
+		time = this.toSeconds(time);
+		this._modulator.start(time);
+		this._pulse.start(time);
 	};
 
 	/**
 	 *  stop the oscillator
-	 *  @param  {Tone.Time} time (optional) timing parameter
+	 *  @param  {Time} time (optional) timing parameter
+	 *  @private
 	 */
-	Tone.PWMOscillator.prototype.stop = function(time){
-		if (this.state === Tone.Source.State.STARTED){
-			if (!time){
-				this.state = Tone.Source.State.STOPPED;
-			}
-			time = this.toSeconds(time);
-			this._modulator.stop(time);
-			this._pulse.stop(time);
+	Tone.PWMOscillator.prototype._stop = function(time){
+		time = this.toSeconds(time);
+		this._modulator.stop(time);
+		this._pulse.stop(time);
+	};
+
+	/**
+	 * The type of the oscillator. Always returns "pwm".
+	 * @readOnly
+	 * @memberOf Tone.PWMOscillator#
+	 * @type {string}
+	 * @name type
+	 */
+	Object.defineProperty(Tone.PWMOscillator.prototype, "type", {
+		get : function(){
+			return "pwm";
 		}
-	};
+	});
 
 	/**
-	 *  set the phase of the oscillator (in degrees)
-	 *  @param {number} degrees the phase in degrees
+	 * The partials of the waveform. Cannot set partials for this waveform type
+	 * @memberOf Tone.PWMOscillator#
+	 * @type {Array}
+	 * @name partials
+	 * @private
 	 */
-	Tone.PWMOscillator.prototype.setPhase = function(phase) {
-		this._modulator.setPhase(phase);
-	};
+	Object.defineProperty(Tone.PWMOscillator.prototype, "partials", {
+		get : function(){
+			return [];
+		}
+	});
 
 	/**
-	 *  set the modulation rate, with an optional ramp time to that 
-	 *  
-	 *  @param {number}	freq
-	 *  @param {Tone.Time=} rampTime when the oscillator will arrive at the frequency
+	 * The phase of the oscillator in degrees.
+	 * @memberOf Tone.PWMOscillator#
+	 * @type {number}
+	 * @name phase
 	 */
-	Tone.PWMOscillator.prototype.setModulationFrequency = function(val, rampTime){
-		this._pulse.setFrequency(val, rampTime);
-	};
+	Object.defineProperty(Tone.PWMOscillator.prototype, "phase", {
+		get : function(){
+			return this._modulator.phase;
+		}, 
+		set : function(phase){
+			this._modulator.phase = phase;
+		}
+	});
 
 	/**
-	 *  set the parameters at once
-	 *  @param {Object} params
-	 */
-	Tone.PWMOscillator.prototype.set = function(params){
-		if (!this.isUndef(params.modulationFrequency)) this.setModulationFrequency(params.modulationFrequency);
-		if (!this.isUndef(params.phase)) this.setPhase(params.phase);
-		if (!this.isUndef(params.frequency)) this.setFrequency(params.frequency);
-		if (!this.isUndef(params.onended)) this.onended = params.onended;
-		if (!this.isUndef(params.detune)) this.detune.setValue(params.detune);
-		Tone.Source.prototype.set.call(this, params);
-	};
-
-	/**
-	 *  clean up
+	 *  Clean up.
+	 *  @return {Tone.PWMOscillator} this
 	 */
 	Tone.PWMOscillator.prototype.dispose = function(){
 		Tone.Source.prototype.dispose.call(this);
 		this._pulse.dispose();
-		this._modulator.dispose();
 		this._pulse = null;
+		this._scale.dispose();
+		this._scale = null;
+		this._modulator.dispose();
 		this._modulator = null;
-		this.onended = null;
+		this._writable(["modulationFrequency", "frequency", "detune"]);
 		this.frequency = null;
 		this.detune = null;
 		this.modulationFrequency = null;
+		return this;
 	};
 
 	return Tone.PWMOscillator;

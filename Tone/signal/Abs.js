@@ -4,13 +4,18 @@ function(Tone){
 	"use strict";
 
 	/**
-	 *  @class return the absolute value of an incoming signal
-	 *
+	 *  @class Return the absolute value of an incoming signal. 
+	 *  
 	 *  @constructor
-	 *  @extends {Tone}
+	 *  @extends {Tone.SignalBase}
+	 *  @example
+	 * var signal = new Tone.Signal(-1);
+	 * var abs = new Tone.Abs();
+	 * signal.connect(abs);
+	 * //the output of abs is 1. 
 	 */
 	Tone.Abs = function(){
-		Tone.call(this);
+		Tone.call(this, 1, 0);
 
 		/**
 		 *  @type {Tone.LessThan}
@@ -22,7 +27,7 @@ function(Tone){
 		 *  @type {Tone.Select}
 		 *  @private
 		 */
-		this._switch = new Tone.Select(2);
+		this._switch = this.output = new Tone.Select(2);
 		
 		/**
 		 *  @type {Tone.Negate}
@@ -34,35 +39,26 @@ function(Tone){
 		this.input.connect(this._switch, 0, 0);
 		this.input.connect(this._negate);
 		this._negate.connect(this._switch, 0, 1);
-		this._switch.connect(this.output);
 		
 		//the control signal
-		this.chain(this.input, this._ltz, this._switch.gate);
+		this.input.chain(this._ltz, this._switch.gate);
 	};
 
-	Tone.extend(Tone.Abs);
-
-	/**
-	 *  borrows the method from {@link Tone.Signal}
-	 *  
-	 *  @function
-	 */
-	Tone.Abs.prototype.connect = Tone.Signal.prototype.connect;
+	Tone.extend(Tone.Abs, Tone.SignalBase);
 
 	/**
 	 *  dispose method
+	 *  @returns {Tone.Abs} this
 	 */
 	Tone.Abs.prototype.dispose = function(){
+		Tone.prototype.dispose.call(this);
 		this._switch.dispose();
-		this._ltz.dispose();
-		this._negate.dispose();
-		this.input.disconnect();
-		this.output.disconnect();
 		this._switch = null;
+		this._ltz.dispose();
 		this._ltz = null;
+		this._negate.dispose();
 		this._negate = null;
-		this.input = null;
-		this.output = null;
+		return this;
 	}; 
 
 	return Tone.Abs;

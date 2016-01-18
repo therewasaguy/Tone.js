@@ -1,16 +1,33 @@
-define(["Tone/core/Tone", "Tone/component/Envelope"], function(Tone){
+define(["Tone/core/Tone", "Tone/component/Envelope", "Tone/core/Gain"], function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class  An Envelope connected to a gain node which can be used as an amplitude envelope.
+	 *  @class  Tone.AmplitudeEnvelope is a Tone.Envelope connected to a gain node. 
+	 *          Unlike Tone.Envelope, which outputs the envelope's value, Tone.AmplitudeEnvelope accepts
+	 *          an audio signal as the input and will apply the envelope to the amplitude
+	 *          of the signal. Read more about ADSR Envelopes on [Wikipedia](https://en.wikipedia.org/wiki/Synthesizer#ADSR_envelope).
 	 *  
 	 *  @constructor
 	 *  @extends {Tone.Envelope}
-	 *  @param {Tone.Time|Object=} attack  the attack time or an options object will all of the parameters
-	 *  @param {Tone.Time=} decay   the decay time
-	 *  @param {number=} sustain the sustain amount
-	 *  @param {Tone.Time=} release the release time
+	 *  @param {Time|Object} [attack] The amount of time it takes for the envelope to go from 
+	 *                               0 to it's maximum value. 
+	 *  @param {Time} [decay]	The period of time after the attack that it takes for the envelope
+	 *                       	to fall to the sustain value. 
+	 *  @param {NormalRange} [sustain]	The percent of the maximum value that the envelope rests at until
+	 *                                	the release is triggered. 
+	 *  @param {Time} [release]	The amount of time after the release is triggered it takes to reach 0. 
+	 *  @example
+	 * var ampEnv = new Tone.AmplitudeEnvelope({
+	 * 	"attack": 0.1,
+	 * 	"decay": 0.2,
+	 * 	"sustain": 1.0,
+	 * 	"release": 0.8
+	 * }).toMaster();
+	 * //create an oscillator and connect it
+	 * var osc = new Tone.Oscillator().connect(ampEnv).start();
+	 * //trigger the envelopes attack and release "8t" apart
+	 * ampEnv.triggerAttackRelease("8t");
 	 */
 	Tone.AmplitudeEnvelope = function(){
 
@@ -19,24 +36,24 @@ define(["Tone/core/Tone", "Tone/component/Envelope"], function(Tone){
 		/**
 		 *  the input node
 		 *  @type {GainNode}
+		 *  @private
 		 */
-		this.input = this.context.createGain();
+		this.input = this.output = new Tone.Gain();
 
-		//disconenct the signal from the output
-		this._control.disconnect();
-		//connect it to the output gain
-		this._control.connect(this.output.gain);
-		//input -> output
-		this.input.connect(this.output);
+		this._sig.connect(this.output.gain);
 	};
 
 	Tone.extend(Tone.AmplitudeEnvelope, Tone.Envelope);
 
 	/**
-	 *  clean up
+	 *  Clean up
+	 *  @return  {Tone.AmplitudeEnvelope}  this
 	 */
 	Tone.AmplitudeEnvelope.prototype.dispose = function(){
+		this.input.dispose();
+		this.input = null;
 		Tone.Envelope.prototype.dispose.call(this);
+		return this;
 	};
 
 	return Tone.AmplitudeEnvelope;

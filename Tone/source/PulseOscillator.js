@@ -1,38 +1,40 @@
-define(["Tone/core/Tone", "Tone/source/Source", "Tone/source/Oscillator", "Tone/signal/Signal", "Tone/signal/Threshold"],
+define(["Tone/core/Tone", "Tone/source/Source", "Tone/source/Oscillator", "Tone/signal/Signal", "Tone/signal/WaveShaper"],
 function(Tone){
 
 	"use strict";
 
 	/**
-	 *  
-	 *  @static 
-	 *  @private
-	 *  @type {Float32Array}
-	 */
-	var pulseCurve = new Float32Array(256);
-	for(var i=0; i < 128; i++) {
-		pulseCurve[i] = -1;
-		pulseCurve[i+128] = 1;
-	}
-
-	/**
-	 *  @class Pulse Oscillator with control over width
+	 *  @class Tone.PulseOscillator is a pulse oscillator with control over pulse width,
+	 *         also known as the duty cycle. At 50% duty cycle (width = 0.5) the wave is 
+	 *         a square and only odd-numbered harmonics are present. At all other widths 
+	 *         even-numbered harmonics are present. Read more 
+	 *         [here](https://wigglewave.wordpress.com/2014/08/16/pulse-waveforms-and-harmonics/).
 	 *
 	 *  @constructor
 	 *  @extends {Tone.Oscillator}
-	 *  @param {number=} frequency the frequency of the oscillator
-	 *  @param {number} [width = 0.5] the width of the pulse
+	 *  @param {Frequency} [frequency] The frequency of the oscillator
+	 *  @param {NormalRange} [width] The width of the pulse
+	 *  @example
+	 * var pulse = new Tone.PulseOscillator("E5", 0.4).toMaster().start();
 	 */
 	Tone.PulseOscillator = function(){
 
-		Tone.Source.call(this);
 		var options = this.optionsObject(arguments, ["frequency", "width"], Tone.Oscillator.defaults);
+		Tone.Source.call(this, options);
 
 		/**
-		 *  the width of the pulse
-		 *  @type {Tone.Signal}
+		 *  The width of the pulse. 
+		 *  @type {NormalRange}
+		 *  @signal
 		 */
-		this.width = new Tone.Signal(options.width);
+		this.width = new Tone.Signal(options.width, Tone.Type.NormalRange);
+
+		/**
+		 *  gate the width amount
+		 *  @type {GainNode}
+		 *  @private
+		 */
+		this._widthGate = this.context.createGain();
 
 		/**
 		 *  the sawtooth oscillator
@@ -47,43 +49,42 @@ function(Tone){
 		});
 
 		/**
-		 *  the oscillators frequency
-		 *  @type {Tone.Signal}
+		 *  The frequency control.
+		 *  @type {Frequency}
+		 *  @signal
 		 */
 		this.frequency = this._sawtooth.frequency;
 
 		/**
-		 *  the oscillators detune
-		 *  @type {Tone.Signal}
+		 *  The detune in cents. 
+		 *  @type {Cents}
+		 *  @signal
 		 */
 		this.detune = this._sawtooth.detune;
 
 		/**
-		 *  callback which is invoked when the oscillator is stoped
-		 *  @type {function()}
-		 */
-		this.onended = options.onended;
-
-		/**
-		 *  threshold the signal to turn it into a square
-		 *  
-		 *  @type {WaveShaperNode}
+		 *  Threshold the signal to turn it into a square
+		 *  @type {Tone.WaveShaper}
 		 *  @private
 		 */
-		this._thresh = this.context.createWaveShaper();
-		this._thresh.curve = pulseCurve;
+		this._thresh = new Tone.WaveShaper(function(val){
+			if (val < 0){
+				return -1;
+			} else {
+				return 1;
+			}
+		});
 
 		//connections
-		this.chain(this._sawtooth, this._thresh, this.output);
-		this.width.connect(this._thresh);
-		this._sawtooth.onended = this._onended.bind(this);
+		this._sawtooth.chain(this._thresh, this.output);
+		this.width.chain(this._widthGate, this._thresh);
+		this._readOnly(["width", "frequency", "detune"]);
 	};
 
 	Tone.extend(Tone.PulseOscillator, Tone.Oscillator);
 
 	/**
-	 *  the default parameters
-	 *
+	 *  The default parameters.
 	 *  @static
 	 *  @const
 	 *  @type {Object}
@@ -93,82 +94,92 @@ function(Tone){
 		"detune" : 0,
 		"phase" : 0,
 		"width" : 0.2,
-		"onended" : function(){},
-	};
-
-	/**
-	 *  set the width of the oscillators
-	 *  @param {number} width
-	 */
-	Tone.PulseOscillator.prototype.setWidth = function(width){
-		this.width.setValue(width);
-	};
-
-	/**
-	 *  set the phase of the oscillator
-	 *  @param {number} phase
-	 */
-	Tone.PulseOscillator.prototype.setPhase = function(phase){
-		this._sawtooth.setPhase(phase);
-	};
-
-	/**
-	 *  bulk setter
-	 *  @param {Object} params 
-	 */
-	Tone.PulseOscillator.prototype.set = function(params){
-		if (!this.isUndef(params.width)) this.setWidth(params.width);
-		this._sawtooth.set({
-			"phase" : params.phase,
-			"frequency" : params.frequency,
-			"detune" : params.detune
-		});
-		Tone.Source.prototype.set.call(this, params);		
 	};
 
 	/**
 	 *  start the oscillator
-	 *  
-	 *  @param  {Tone.Time} time 
+	 *  @param  {Time} time 
+	 *  @private
 	 */
-	Tone.PulseOscillator.prototype.start = function(time){
-		if (this.state === Tone.Source.State.STOPPED){
-			time = this.toSeconds(time);
-			this._sawtooth.start(time);
-			this.width.output.gain.setValueAtTime(1, time);
-			this.state = Tone.Source.State.STARTED;
-		}
+	Tone.PulseOscillator.prototype._start = function(time){
+		time = this.toSeconds(time);
+		this._sawtooth.start(time);
+		this._widthGate.gain.setValueAtTime(1, time);
 	};
 
 	/**
 	 *  stop the oscillator
-	 *  
-	 *  @param  {Tone.Time} time 
+	 *  @param  {Time} time 
+	 *  @private
 	 */
-	Tone.PulseOscillator.prototype.stop = function(time){
-		if (this.state === Tone.Source.State.STARTED){
-			time = this.toSeconds(time);
-			this._sawtooth.stop(time);
-			//the width is still connected to the output. 
-			//that needs to be stopped also
-			this.width.output.gain.setValueAtTime(0, time);
-			this.state = Tone.Source.State.STOPPED;
-		}
+	Tone.PulseOscillator.prototype._stop = function(time){
+		time = this.toSeconds(time);
+		this._sawtooth.stop(time);
+		//the width is still connected to the output. 
+		//that needs to be stopped also
+		this._widthGate.gain.setValueAtTime(0, time);
 	};
 
 	/**
-	 *  clean up method
+	 * The phase of the oscillator in degrees.
+	 * @memberOf Tone.PulseOscillator#
+	 * @type {Degrees}
+	 * @name phase
+	 */
+	Object.defineProperty(Tone.PulseOscillator.prototype, "phase", {
+		get : function(){
+			return this._sawtooth.phase;
+		}, 
+		set : function(phase){
+			this._sawtooth.phase = phase;
+		}
+	});
+
+	/**
+	 * The type of the oscillator. Always returns "pulse".
+	 * @readOnly
+	 * @memberOf Tone.PulseOscillator#
+	 * @type {string}
+	 * @name type
+	 */
+	Object.defineProperty(Tone.PulseOscillator.prototype, "type", {
+		get : function(){
+			return "pulse";
+		}
+	});
+
+	/**
+	 * The partials of the waveform. Cannot set partials for this waveform type
+	 * @memberOf Tone.PulseOscillator#
+	 * @type {Array}
+	 * @name partials
+	 * @private
+	 */
+	Object.defineProperty(Tone.PulseOscillator.prototype, "partials", {
+		get : function(){
+			return [];
+		}
+	});
+
+	/**
+	 *  Clean up method.
+	 *  @return {Tone.PulseOscillator} this
 	 */
 	Tone.PulseOscillator.prototype.dispose = function(){
 		Tone.Source.prototype.dispose.call(this);
 		this._sawtooth.dispose();
-		this.width.dispose();
-		this._thresh.disconnect();
 		this._sawtooth = null;
+		this._writable(["width", "frequency", "detune"]);
+		this.width.dispose();
+		this.width = null;
+		this._widthGate.disconnect();
+		this._widthGate = null;
+		this._widthGate = null;
+		this._thresh.disconnect();
+		this._thresh = null;
 		this.frequency = null;
 		this.detune = null;
-		this.width = null;
-		this._thresh = null;
+		return this;
 	};
 
 	return Tone.PulseOscillator;

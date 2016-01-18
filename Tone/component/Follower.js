@@ -1,18 +1,23 @@
-define(["Tone/core/Tone", "Tone/signal/Abs", "Tone/signal/Negate", "Tone/signal/Multiply", "Tone/signal/Signal"], 
+define(["Tone/core/Tone", "Tone/signal/Abs", "Tone/signal/Subtract", 
+	"Tone/signal/Multiply", "Tone/signal/Signal", "Tone/signal/WaveShaper", "Tone/core/Type"], 
 function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class  Follow the envelope of the incoming signal. 
-	 *          Careful with small (< 0.02) attack or decay values. 
-	 *          The follower has some ripple which gets exaggerated
-	 *          by small values. 
+	 *  @class  Tone.Follower is a  crude envelope follower which will follow 
+	 *          the amplitude of an incoming signal. 
+	 *          Take care with small (< 0.02) attack or decay values 
+	 *          as follower has some ripple which is exaggerated
+	 *          at these values. Read more about envelope followers (also known 
+	 *          as envelope detectors) on [Wikipedia](https://en.wikipedia.org/wiki/Envelope_detector).
 	 *  
 	 *  @constructor
 	 *  @extends {Tone}
-	 *  @param {Tone.Time=} [attack = 0.05] 
-	 *  @param {Tone.Time=} [release = 0.5] 
+	 *  @param {Time|Object} [attack] The rate at which the follower rises.
+	 *  @param {Time=} release The rate at which the folower falls. 
+	 *  @example
+	 * var follower = new Tone.Follower(0.2, 0.4);
 	 */
 	Tone.Follower = function(){
 
@@ -39,53 +44,47 @@ function(Tone){
 		 *  @type {WaveShaperNode}
 		 *  @private
 		 */
-		this._frequencyValues = this.context.createWaveShaper();
+		this._frequencyValues = new Tone.WaveShaper();
 		
 		/**
-		 *  @type {Tone.Negate}
+		 *  @type {Tone.Subtract}
 		 *  @private
 		 */
-		this._negate = new Tone.Negate();
-
-		/**
-		 *  @type {GainNode}
-		 *  @private
-		 */
-		this._difference = this.context.createGain();
+		this._sub = new Tone.Subtract();
 
 		/**
 		 *  @type {DelayNode}
 		 *  @private
 		 */
 		this._delay = this.context.createDelay();
-		this._delay.delayTime.value = 0.02; //20 ms delay
+		this._delay.delayTime.value = this.blockTime;
 
 		/**
 		 *  this keeps it far from 0, even for very small differences
 		 *  @type {Tone.Multiply}
 		 *  @private
 		 */
-		this._mult = new Tone.Multiply(1000);
+		this._mult = new Tone.Multiply(10000);
 
 		/**
 		 *  @private
 		 *  @type {number}
 		 */
-		this._attack = this.secondsToFrequency(options.attack);
+		this._attack = options.attack;
 
 		/**
 		 *  @private
 		 *  @type {number}
 		 */
-		this._release = this.secondsToFrequency(options.release);
+		this._release = options.release;
 
 		//the smoothed signal to get the values
-		this.chain(this.input, this._abs, this._filter, this.output);
+		this.input.chain(this._abs, this._filter, this.output);
 		//the difference path
-		this.chain(this._abs, this._negate, this._difference);
-		this.chain(this._filter, this._delay, this._difference);
+		this._abs.connect(this._sub, 0, 1);
+		this._filter.chain(this._delay, this._sub);
 		//threshold the difference and use the thresh to set the frequency
-		this.chain(this._difference, this._mult, this._frequencyValues, this._filter.frequency);
+		this._sub.chain(this._mult, this._frequencyValues, this._filter.frequency);
 		//set the attack and release values in the table
 		this._setAttackRelease(this._attack, this._release);
 	};
@@ -103,79 +102,84 @@ function(Tone){
 
 	/**
 	 *  sets the attack and release times in the wave shaper
-	 *  @param   {number} attack  
-	 *  @param   {number} release 
+	 *  @param   {Time} attack  
+	 *  @param   {Time} release 
 	 *  @private
 	 */
 	Tone.Follower.prototype._setAttackRelease = function(attack, release){
-		var curveLength = 1024;
-		var curve = new Float32Array(curveLength);
-		for (var i = 0; i < curveLength; i++){
-			var normalized = (i / (curveLength - 1)) * 2 - 1;
-			var val;
-			if (normalized <= 0){
-				val = attack;
+		var minTime = this.blockTime;
+		attack = this.secondsToFrequency(this.toSeconds(attack));
+		release = this.secondsToFrequency(this.toSeconds(release));
+		attack = Math.max(attack, minTime);
+		release = Math.max(release, minTime);
+		this._frequencyValues.setMap(function(val){
+			if (val <= 0){
+				return attack;
 			} else {
-				val = release;
+				return release;
 			} 
-			curve[i] = val;
+		});
+	};
+
+	/**
+	 * The attack time.
+	 * @memberOf Tone.Follower#
+	 * @type {Time}
+	 * @name attack
+	 */
+	Object.defineProperty(Tone.Follower.prototype, "attack", {
+		get : function(){
+			return this._attack;
+		},
+		set : function(attack){
+			this._attack = attack;
+			this._setAttackRelease(this._attack, this._release);	
 		}
-		this._frequencyValues.curve = curve;
-	};
+	});
 
 	/**
-	 *  set the attack time
-	 *  @param {Tone.Time} attack
+	 * The release time.
+	 * @memberOf Tone.Follower#
+	 * @type {Time}
+	 * @name release
 	 */
-	Tone.Follower.prototype.setAttack = function(attack){
-		this._attack = this.secondsToFrequency(attack);
-		this._setAttackRelease(this._attack, this._release);
-	};
+	Object.defineProperty(Tone.Follower.prototype, "release", {
+		get : function(){
+			return this._release;
+		},
+		set : function(release){
+			this._release = release;
+			this._setAttackRelease(this._attack, this._release);	
+		}
+	});
 
 	/**
-	 *  set the release time
-	 *  @param {Tone.Time} release
-	 */
-	Tone.Follower.prototype.setRelease = function(release){
-		this._release = this.secondsToFrequency(release);
-		this._setAttackRelease(this._attack, this._release);
-	};
-
-	/**
-	 *  setter in bulk
-	 *  @param {Object} params 
-	 */
-	Tone.Follower.prototype.set = function(params){
-		if (!this.isUndef(params.attack)) this.setAttack(params.attack);
-		if (!this.isUndef(params.release)) this.setRelease(params.release);
-		Tone.Effect.prototype.set.call(this, params);
-	};
-
-	/**
-	 *  borrows the connect method from Signal so that the output can be used
-	 *  as a control signal {@link Tone.Signal}
+	 *  Borrows the connect method from Signal so that the output can be used
+	 *  as a Tone.Signal control signal.
+	 *  @function
 	 */
 	Tone.Follower.prototype.connect = Tone.Signal.prototype.connect;
 
 	/**
 	 *  dispose
+	 *  @returns {Tone.Follower} this
 	 */
 	Tone.Follower.prototype.dispose = function(){
 		Tone.prototype.dispose.call(this);
 		this._filter.disconnect();
-		this._frequencyValues.disconnect();
-		this._delay.disconnect();
-		this._difference.disconnect();
-		this._abs.dispose();
-		this._negate.dispose();
-		this._mult.dispose();
 		this._filter = null;
-		this._delay = null;
+		this._frequencyValues.disconnect();
 		this._frequencyValues = null;
+		this._delay.disconnect();
+		this._delay = null;
+		this._sub.disconnect();
+		this._sub = null;
+		this._abs.dispose();
 		this._abs = null;
-		this._negate = null;
-		this._difference = null;
+		this._mult.dispose();
 		this._mult = null;
+		this._curve = null;
+		return this;
 	};
 
 	return Tone.Follower;

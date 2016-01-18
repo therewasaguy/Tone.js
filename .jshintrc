@@ -10,6 +10,7 @@
     "define" : false,
     //set audio stuff
     "AudioContext" : false,
+    "AudioBuffer" : false,
     "OfflineAudioContext" : false,
     "AudioBufferSourceNode" : false,
     "OscillatorNode" : false,
@@ -18,7 +19,8 @@
     "AudioNode" : false,
     "AudioParam" : false,
     "WaveShaperNode" : false,
-    "DynamicsCompressorNode" : false
+    "DynamicsCompressorNode" : false,
+    "MediaStreamTrack" : false
   },
   "jquery" : true,
   "globalstrict": false,
