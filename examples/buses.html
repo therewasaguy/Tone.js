@@ -1,118 +1,138 @@
+<!DOCTYPE html>
 <html>
 <head>
-	<title>BUSES</title>
+  <meta charset="utf-8">
+	<title>Buses</title>
 
-	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<link rel="icon" type="image/png" sizes="174x174" href="./style/favicon.png">
 	
-	<script type="text/javascript" src="./deps/jquery.min.js"></script>
-	<script type="text/javascript" src="./deps/jquery-ui.js"></script>
-	<script type="text/javascript" src="./deps/jquery.ui.touch-punch.js"></script>
 	<script type="text/javascript" src="../build/Tone.js"></script>
-	<script type="text/javascript" src="../build/Tone.Preset.js"></script>
-	<script type="text/javascript" src="../Tone/effect/preset/Phaser.preset.js"></script>
-	<script type="text/javascript" src="./Widgets.js"></script>
-	<script type="text/javascript" src="./ExampleList.js"></script>
-	<link rel="stylesheet" type="text/css" href="./style/widgets.css">
-	<link rel="stylesheet" type="text/css" href="./style/jquery-ui.css">
-	<script type="text/javascript" src="./deps/qwerty-hancock.js"></script>
+	<script type="text/javascript" src="./scripts/jquery.min.js"></script>
+	<script type="text/javascript" src="./scripts/draggabilly.js"></script>
+	<script type="text/javascript" src="./scripts/Interface.js"></script>
+	<script type="text/javascript" src="./scripts/Logo.js"></script>
+	<script type="text/javascript" src="./scripts/qwerty-hancock.js"></script>
+
+	<link rel="stylesheet" type="text/css" href="./style/examples.css">
+
+	<script type="text/javascript">
+		// jshint ignore: start
+	</script>
 
 </head>
 <body>
-	<div id="Container">
+	<div id="Content">
+		<div id="Title">Buses</div>
 		<div id="Explanation">
-			Buses
-			<br>
-			<br>
-			Buses allow you to send signal using named sends and receives. Sometimes
-			this is advantageous over directly connecting nodes for modularity and loose coupling. 
+			Buses make it easy to share effects across many instruments. <code>send</code>
+			audio to a named bus from an instrument and then <code>receive</code> that
+			channel on your effect.
+			<br><br>
+			Docs on <a href="http://tonejs.org/docs/#Tone.send">send</a> and 
+			<a href="http://tonejs.org/docs/#Tone.receive">receive</a>.
 		</div>
-		<div id="Content">
-			
-		</div>
+		<div id="Sliders"></div>
+		<div id="Keyboard"></div>
 	</div>
 	<script type="text/javascript">
 
-	 	/* globals Tone, GUI */
+		//the synth
+		var synth = new Tone.SimpleSynth().toMaster()
+			.set("envelope.attack", 0.04);
 
-		var synth = new Tone.MonoSynth();
-		synth.setPreset("Barky");
-		var dry = Tone.context.createGain();
-		synth.connect(dry);
-		synth.setVolume(-6);
-		dry.toMaster();
-
-		var chorusSend = synth.send("chorus");
-		chorusSend.gain.value = 0;
-		var phaserSend = synth.send("phaser");
-		phaserSend.gain.value = 0;
-		var autowahSend = synth.send("autowah");
-		autowahSend.gain.value = 0;
+		//send audio to each of the effect channels
+		var chorusSend = synth.send("chorus", -Infinity);
+		var chebySend = synth.send("cheby", -Infinity);
+		var autowahSend = synth.send("autowah", -Infinity);
+		var reverbSend = synth.send("reverb", -Infinity);
 
 		//make some effects
-		var chorus = new Tone.Chorus();
-		chorus.receive("chorus");
-		chorus.toMaster();
-		chorus.setPreset("ether");
-		var phaser = new Tone.Phaser();
-		phaser.receive("phaser");
-		phaser.toMaster();
-		phaser.setPreset("bubbles");
-		var autoWah = new Tone.AutoWah();
-		autoWah.receive("autowah");
-		autoWah.toMaster();
-		autoWah.setPreset("talker");
-		
-		// GUI //
+		var chorus = new Tone.Chorus()
+			.receive("chorus")
+			.toMaster();
 
-		new GUI.TopBar(Tone);
+		var cheby = new Tone.Chebyshev(50)
+			.receive("cheby")
+			.toMaster();
 
-		var content = $("#Content");
+		var reverb = new Tone.Freeverb(0.9, 4000)
+			.receive("reverb")
+			.toMaster();
 
-		//sliders
-		var drySlider = new GUI.Slider(content, function(val){
-			dry.gain.value = val;
-		}, 1, "dry");
-		drySlider.render(1);
-		new GUI.Slider(content, function(val){
-			chorusSend.gain.value = val;
-		}, 0, "chorus");
-		new GUI.Slider(content, function(val){
-			autowahSend.gain.value = val;
-		}, 0, "autowah");
-		new GUI.Slider(content, function(val){
-			phaserSend.gain.value = val;
-		}, 0, "phaser");
-
-		//keyboard
-		$("<div>", {"id" : "Keyboard"}).appendTo(content);
-		var keyboard = new QwertyHancock({
-			id: "Keyboard",
-			width: 200,
-			height: 75,
-			octaves: 1,
-			startNote: "C4",
-			whiteNotesColour: "white",
-			blackNotesColour: "black",
-			hoverColour: "#f3e939"
-		});
-		keyboard.keyDown = function(note, freq){
-			synth.triggerAttack(freq);
-		};
-		keyboard.keyUp = function(){
-			synth.triggerRelease();
-		};
-		
+		var autoWah = new Tone.AutoWah()
+			.receive("autowah")
+			.toMaster()
+			.set({
+				"baseFrequency" : 100,
+				"octaves" : 4,
+				"sensitivity" : 0,
+				"Q" : 2,
+				"gain" : 10,
+				"follower" : {
+					"attack" : 0.05,
+					"release" : 0.2
+				}
+			});
 	</script>
-	<style type="text/css">
-	#Content {
-		width: 200px;
-	}
-	.Slider {
-		margin-bottom: 10px;
-	}
-	#Keyboard {
-		background-color: black;
-	}
-	</style>
+	<script id="GUI" type="text/javascript">
+		$(function(){
+
+			new Interface.Slider({
+				name : "Chebyshev",
+				parent : $("#Sliders"),
+				drag : function(val){
+					chebySend.gain.value = val;
+				}
+			});
+
+			new Interface.Slider({
+				name : "Chorus",
+				parent : $("#Sliders"),
+				drag : function(val){
+					chorusSend.gain.value = val;
+				}
+			});
+
+			new Interface.Slider({
+				name : "Freeverb",
+				parent : $("#Sliders"),
+				drag : function(val){
+					reverbSend.gain.value = val;
+				}
+			});
+
+			new Interface.Slider({
+				name : "AutoWah",
+				parent : $("#Sliders"),
+				drag : function(val){
+					autowahSend.gain.value = val;
+				}
+			});
+
+			/**
+			 *  the keyboard
+			 */
+			var keyboard = new QwertyHancock({
+				id: "Keyboard",
+				width: $("#Content").width(),
+				height: 150,
+				octaves: Interface.isMobile ? 1.26 : 3,
+				startNote: "C3",
+				whiteKeyColour: "white",
+				blackKeyColour: "#f5871f",
+				activeColour : "#1EDF3E"
+			});
+
+			keyboard.keyDown = function (note, frequency) {
+			    synth.triggerAttack(frequency);
+			};
+
+			keyboard.keyUp = function () {
+			    synth.triggerRelease();
+			};
+
+		});
+	</script>
 </body>
 </html>

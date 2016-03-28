@@ -3,11 +3,13 @@ define(["Tone/core/Tone", "Tone/effect/Effect", "Tone/signal/Signal", "Tone/sign
 	"use strict";
 	
 	/**
-	 * 	@class  Feedback Effect (a sound loop between an audio source and its own output)
+	 * 	@class  Tone.FeedbackEffect provides a loop between an 
+	 * 	        audio source and its own output. This is a base-class
+	 * 	        for feedback effects. 
 	 *
 	 *  @constructor
 	 *  @extends {Tone.Effect}
-	 *  @param {number|object=} [initialFeedback=0.25] the initial feedback value (defaults to 0.25)
+	 *  @param {NormalRange|Object} [feedback] The initial feedback value.
 	 */
 	Tone.FeedbackEffect = function(){
 
@@ -17,17 +19,11 @@ define(["Tone/core/Tone", "Tone/effect/Effect", "Tone/signal/Signal", "Tone/sign
 		Tone.Effect.call(this, options);
 
 		/**
-		 *  controls the amount of feedback
-		 *  @type {Tone.Signal}
+		 *  The amount of signal which is fed back into the effect input. 
+		 *  @type {NormalRange}
+		 *  @signal
 		 */
-		this.feedback = new Tone.Signal(options.feedback);
-
-		/**
-		 *  scales the feedback in half
-		 *  @type {Tone.Multiply}
-		 *  @private
-		 */
-		this._half = new Tone.Multiply(0.5);
+		this.feedback = new Tone.Signal(options.feedback, Tone.Type.NormalRange);
 		
 		/**
 		 *  the gain which controls the feedback
@@ -37,8 +33,9 @@ define(["Tone/core/Tone", "Tone/effect/Effect", "Tone/signal/Signal", "Tone/sign
 		this._feedbackGain = this.context.createGain();
 
 		//the feedback loop
-		this.chain(this.effectReturn, this._feedbackGain, this.effectSend);
-		this.chain(this.feedback, this._half, this._feedbackGain.gain);
+		this.effectReturn.chain(this._feedbackGain, this.effectSend);
+		this.feedback.connect(this._feedbackGain.gain);
+		this._readOnly(["feedback"]);
 	};
 
 	Tone.extend(Tone.FeedbackEffect, Tone.Effect);
@@ -48,44 +45,21 @@ define(["Tone/core/Tone", "Tone/effect/Effect", "Tone/signal/Signal", "Tone/sign
 	 *  @type {Object}
 	 */
 	Tone.FeedbackEffect.defaults = {
-		"feedback" : 0.25
+		"feedback" : 0.125
 	};
 
 	/**
-	 *  set the feedback amount
-	 *
-	 *  @param {number} value  the amount of feedback
-	 *  @param {Tone.Time=} rampTime (optionally) set the ramp time it takes 
-	 *                               to reach the new feedback value
-	 */
-	Tone.FeedbackEffect.prototype.setFeedback = function(value, rampTime){
-		if (rampTime){
-			this.feedback.linearRampToValueNow(value, rampTime);
-		} else {
-			this.feedback.setValue(value);
-		}
-	};
-
-	/**
-	 *  set the parameters in bulk
-	 *  @param {Object} params
-	 */
-	Tone.FeedbackEffect.prototype.set = function(params){
-		if (!this.isUndef(params.feedback)) this.setFeedback(params.feedback);
-		Tone.Effect.prototype.set.call(this, params);
-	};
-
-	/**
-	 *  clean up
+	 *  Clean up. 
+	 *  @returns {Tone.FeedbackEffect} this
 	 */
 	Tone.FeedbackEffect.prototype.dispose = function(){
 		Tone.Effect.prototype.dispose.call(this);
+		this._writable(["feedback"]);
 		this.feedback.dispose();
-		this._half.dispose();
-		this._feedbackGain.disconnect();
 		this.feedback = null;
+		this._feedbackGain.disconnect();
 		this._feedbackGain = null;
-		this._half = null;
+		return this;
 	};
 
 	return Tone.FeedbackEffect;

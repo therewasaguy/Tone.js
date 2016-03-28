@@ -1,16 +1,33 @@
-define(["Tone/core/Tone", "Tone/signal/Signal"], function(Tone){
+define(["Tone/core/Tone", "Tone/signal/TimelineSignal", 
+	"Tone/signal/Pow", "Tone/core/Type"], function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class  ADSR envelope generator attaches to an AudioParam or Signal
+	 *  @class  Tone.Envelope is an [ADSR](https://en.wikipedia.org/wiki/Synthesizer#ADSR_envelope)
+	 *          envelope generator. Tone.Envelope outputs a signal which 
+	 *          can be connected to an AudioParam or Tone.Signal. 
+	 *          <img src="https://upload.wikimedia.org/wikipedia/commons/e/ea/ADSR_parameter.svg">
 	 *
 	 *  @constructor
 	 *  @extends {Tone}
-	 *  @param {Tone.Time|Object=} attack
-	 *  @param {Tone.Time=} decay
-	 *  @param {number=} sustain 	a percentage (0-1) of the full amplitude
-	 *  @param {Tone.Time=} release
+	 *  @param {Time} [attack] The amount of time it takes for the envelope to go from 
+	 *                         0 to it's maximum value. 
+	 *  @param {Time} [decay]	The period of time after the attack that it takes for the envelope
+	 *                       	to fall to the sustain value. 
+	 *  @param {NormalRange} [sustain]	The percent of the maximum value that the envelope rests at until
+	 *                                	the release is triggered. 
+	 *  @param {Time} [release]	The amount of time after the release is triggered it takes to reach 0. 
+	 *  @example
+	 * //an amplitude envelope
+	 * var gainNode = Tone.context.createGain();
+	 * var env = new Tone.Envelope({
+	 * 	"attack" : 0.1,
+	 * 	"decay" : 0.2,
+	 * 	"sustain" : 1,
+	 * 	"release" : 0.8,
+	 * });
+	 * env.connect(gainNode.gain);
 	 */
 	Tone.Envelope = function(){
 
@@ -18,193 +35,255 @@ define(["Tone/core/Tone", "Tone/signal/Signal"], function(Tone){
 		var options = this.optionsObject(arguments, ["attack", "decay", "sustain", "release"], Tone.Envelope.defaults);
 
 		/** 
-		 *  the output
-		 *  @type {GainNode}
+		 *  When triggerAttack is called, the attack time is the amount of
+		 *  time it takes for the envelope to reach it's maximum value. 
+		 *  @type {Time}
 		 */
-		this.output = this.context.createGain();
-
-		/** 
-		 *  the attack time in seconds
-		 *  @type {number}
-		 */
-		this.attack = this.toSeconds(options.attack);
+		this.attack = options.attack;
 
 		/**
-		 *  the decay time in seconds
-		 *  @type {number}
+		 *  After the attack portion of the envelope, the value will fall
+		 *  over the duration of the decay time to it's sustain value. 
+		 *  @type {Time}
 		 */
-		this.decay = this.toSeconds(options.decay);
+		this.decay = options.decay;
 		
 		/**
-		 *  the sustain is a value between 0-1
-		 *  @type {number}
+		 * 	The sustain value is the value 
+		 * 	which the envelope rests at after triggerAttack is
+		 * 	called, but before triggerRelease is invoked. 
+		 *  @type {NormalRange}
 		 */
-		this.sustain = this.toSeconds(options.sustain);
+		this.sustain = options.sustain;
 
 		/**
-		 *  the release time in seconds
-		 *  @type {number}
+		 *  After triggerRelease is called, the envelope's
+		 *  value will fall to it's miminum value over the
+		 *  duration of the release time. 
+		 *  @type {Time}
 		 */
-		this.release = this.toSeconds(options.release);
+		this.release = options.release;
 
 		/**
-		 *  the minimum output of the envelope
+		 *  the next time the envelope is at standby
 		 *  @type {number}
-		 */
-		this.min = this.toSeconds(options.min);
-
-		/**
-		 *  the maximum output of the envelope
-		 *  @type {number}
-		 */
-		this.max = this.toSeconds(options.max);
-		
-		/** 
-		 *  the control signal
-		 *  @type {Tone.Signal}
 		 *  @private
 		 */
-		this._control = new Tone.Signal(this.min);
+		this._attackCurve = Tone.Envelope.Type.Linear;
 
-		//connections
-		this._control.connect(this.output);
+		/**
+		 *  the next time the envelope is at standby
+		 *  @type {number}
+		 *  @private
+		 */
+		this._releaseCurve = Tone.Envelope.Type.Exponential;
+
+		/**
+		 *  the minimum output value
+		 *  @type {number}
+		 *  @private
+		 */
+		this._minOutput = 0.00001;
+
+		/**
+		 *  the signal
+		 *  @type {Tone.TimelineSignal}
+		 *  @private
+		 */
+		this._sig = this.output = new Tone.TimelineSignal();
+		this._sig.setValueAtTime(this._minOutput, 0);
+
+		//set the attackCurve initially
+		this.attackCurve = options.attackCurve;
+		this.releaseCurve = options.releaseCurve;
 	};
 
 	Tone.extend(Tone.Envelope);
 
 	/**
 	 *  the default parameters
-	 *
 	 *  @static
+	 *  @const
 	 */
 	Tone.Envelope.defaults = {
 		"attack" : 0.01,
 		"decay" : 0.1,
 		"sustain" : 0.5,
 		"release" : 1,
-		"min" : 0,
-		"max" : 1
+		"attackCurve" : "linear",
+		"releaseCurve" : "exponential",
 	};
 
-	// SETTERS //
-
 	/**
-	 *  set all of the parameters in bulk
-	 *  @param {Object} param the name of member as the key
-	 *                        and the value as the value 
+	 *  the envelope time multipler
+	 *  @type {number}
+	 *  @private
 	 */
-	Tone.Envelope.prototype.set = function(params){
-		if (!this.isUndef(params.attack)) this.setAttack(params.attack);
-		if (!this.isUndef(params.decay)) this.setDecay(params.decay);
-		if (!this.isUndef(params.sustain)) this.setSustain(params.sustain);
-		if (!this.isUndef(params.release)) this.setRelease(params.release);
-		if (!this.isUndef(params.min)) this.setMin(params.min);
-		if (!this.isUndef(params.max)) this.setMax(params.max);
-	};
+	Tone.Envelope.prototype._timeMult = 0.25;
 
 	/**
-	 *  set the attack time
-	 *  @param {Tone.Time} time
+	 * Read the current value of the envelope. Useful for 
+	 * syncronizing visual output to the envelope. 
+	 * @memberOf Tone.Envelope#
+	 * @type {Number}
+	 * @name value
+	 * @readOnly
 	 */
-	Tone.Envelope.prototype.setAttack = function(time){
-		this.attack = this.toSeconds(time);
-	};
+	Object.defineProperty(Tone.Envelope.prototype, "value", {
+		get : function(){
+			return this._sig.value;
+		}
+	});
 
 	/**
-	 *  set the decay time
-	 *  @param {Tone.Time} time
+	 * The slope of the attack. Either "linear" or "exponential". 
+	 * @memberOf Tone.Envelope#
+	 * @type {string}
+	 * @name attackCurve
+	 * @example
+	 * env.attackCurve = "linear";
 	 */
-	Tone.Envelope.prototype.setDecay = function(time){
-		this.decay = this.toSeconds(time);
-	};
+	Object.defineProperty(Tone.Envelope.prototype, "attackCurve", {
+		get : function(){
+			return this._attackCurve;
+		}, 
+		set : function(type){
+			if (type === Tone.Envelope.Type.Linear || 
+				type === Tone.Envelope.Type.Exponential){
+				this._attackCurve = type;
+			} else {
+				throw Error("attackCurve must be either \"linear\" or \"exponential\". Invalid type: ", type);
+			}
+		}
+	});
 
 	/**
-	 *  set the release time
-	 *  @param {Tone.Time} time
+	 * The slope of the Release. Either "linear" or "exponential".
+	 * @memberOf Tone.Envelope#
+	 * @type {string}
+	 * @name releaseCurve
+	 * @example
+	 * env.releaseCurve = "linear";
 	 */
-	Tone.Envelope.prototype.setRelease = function(time){
-		this.release = this.toSeconds(time);
-	};
+	Object.defineProperty(Tone.Envelope.prototype, "releaseCurve", {
+		get : function(){
+			return this._releaseCurve;
+		}, 
+		set : function(type){
+			if (type === Tone.Envelope.Type.Linear || 
+				type === Tone.Envelope.Type.Exponential){
+				this._releaseCurve = type;
+			} else {
+				throw Error("releaseCurve must be either \"linear\" or \"exponential\". Invalid type: ", type);
+			}
+		}
+	});
 
 	/**
-	 *  set the sustain amount
-	 *  @param {number} sustain value between 0-1
-	 */
-	Tone.Envelope.prototype.setSustain = function(sustain){
-		this.sustain = sustain;
-	};
-
-	/**
-	 *  set the envelope max
-	 *  @param {number} max
-	 */
-	Tone.Envelope.prototype.setMax = function(max){
-		this.max = max;
-	};
-
-	/**
-	 *  set the envelope min
-	 *  @param {number} min
-	 */
-	Tone.Envelope.prototype.setMin = function(min){
-		this.min = min;
-		//should move the signal to the min
-		this._control.setValueAtTime(this.min, this.now());
-	};
-
-	/**
-	 * attack->decay->sustain linear ramp
-	 * @param  {Tone.Time=} time
-	 * @param {number=} [velocity=1] the velocity of the envelope scales the vales.
+	 *  Trigger the attack/decay portion of the ADSR envelope. 
+	 *  @param  {Time} [time=now] When the attack should start.
+	 *  @param {NormalRange} [velocity=1] The velocity of the envelope scales the vales.
 	 *                               number between 0-1
+	 *  @returns {Tone.Envelope} this
+	 *  @example
+	 *  //trigger the attack 0.5 seconds from now with a velocity of 0.2
+	 *  env.triggerAttack("+0.5", 0.2);
 	 */
 	Tone.Envelope.prototype.triggerAttack = function(time, velocity){
+		//to seconds
+		var now = this.now() + this.blockTime;
+		time = this.toSeconds(time, now);
+		var attack = this.toSeconds(this.attack) + time;
+		var decay = this.toSeconds(this.decay);
 		velocity = this.defaultArg(velocity, 1);
-		var scaledMax = this.max * velocity;
-		var sustainVal = (scaledMax - this.min) * this.sustain + this.min;
-		time = this.toSeconds(time);
-		this._control.cancelScheduledValues(time);
-		this._control.setTargetAtTime(scaledMax, time, this.attack / 4);
-		this._control.setTargetAtTime(sustainVal, time + this.attack, this.decay / 4);	
+		//attack
+		if (this._attackCurve === Tone.Envelope.Type.Linear){
+			this._sig.linearRampToValueBetween(velocity, time, attack);
+		} else {
+			this._sig.exponentialRampToValueBetween(velocity, time, attack);
+		}
+		//decay
+		this._sig.setValueAtTime(velocity, attack);
+		this._sig.exponentialRampToValueAtTime(this.sustain * velocity, attack + decay);
+		return this;
 	};
 	
 	/**
-	 * triggers the release of the envelope with a linear ramp
-	 * @param  {Tone.Time=} time
+	 *  Triggers the release of the envelope.
+	 *  @param  {Time} [time=now] When the release portion of the envelope should start. 
+	 *  @returns {Tone.Envelope} this
+	 *  @example
+	 *  //trigger release immediately
+	 *  env.triggerRelease();
 	 */
 	Tone.Envelope.prototype.triggerRelease = function(time){
-		time = this.toSeconds(time);
-		this._control.cancelScheduledValues(time);
-		this._control.setTargetAtTime(this.min, time, this.toSeconds(this.release) / 4);
+		var now = this.now() + this.blockTime;
+		time = this.toSeconds(time, now);
+		var release = this.toSeconds(this.release);
+		if (this._releaseCurve === Tone.Envelope.Type.Linear){
+			this._sig.linearRampToValueBetween(this._minOutput, time, time + release);
+		} else {
+			this._sig.exponentialRampToValueBetween(this._minOutput, time, release + time);
+		}
+		return this;
 	};
 
 	/**
-	 *  trigger the attack and release after a sustain time
-	 *  @param {Tone.Time} duration the duration of the note
-	 *  @param {Tone.Time=} time the time of the attack
-	 *  @param {number=} velocity the velocity of the note
+	 *  triggerAttackRelease is shorthand for triggerAttack, then waiting
+	 *  some duration, then triggerRelease. 
+	 *  @param {Time} duration The duration of the sustain.
+	 *  @param {Time} [time=now] When the attack should be triggered.
+	 *  @param {number} [velocity=1] The velocity of the envelope. 
+	 *  @returns {Tone.Envelope} this
+	 *  @example
+	 * //trigger the attack and then the release after 0.6 seconds.
+	 * env.triggerAttackRelease(0.6);
 	 */
 	Tone.Envelope.prototype.triggerAttackRelease = function(duration, time, velocity) {
 		time = this.toSeconds(time);
 		this.triggerAttack(time, velocity);
 		this.triggerRelease(time + this.toSeconds(duration));
+		return this;
 	};
 
 	/**
-	 *  borrows the connect method from {@link Tone.Signal}
-	 *  
+	 *  Borrows the connect method from Tone.Signal. 
 	 *  @function
+	 *  @private
 	 */
 	Tone.Envelope.prototype.connect = Tone.Signal.prototype.connect;
 
 	/**
-	 *  disconnect and dispose
+	 *  Disconnect and dispose.
+	 *  @returns {Tone.Envelope} this
 	 */
 	Tone.Envelope.prototype.dispose = function(){
 		Tone.prototype.dispose.call(this);
-		this._control.dispose();
-		this._control = null;
+		this._sig.dispose();
+		this._sig = null;
+		return this;
 	};
+
+	/**
+	 *  The phase of the envelope. 
+	 *  @enum {string}
+	 */
+	Tone.Envelope.Phase = {
+		Attack : "attack",
+		Decay : "decay",
+		Sustain : "sustain",
+		Release : "release",
+		Standby : "standby",
+ 	};
+
+ 	/**
+	 *  The phase of the envelope. 
+	 *  @enum {string}
+	 */
+	Tone.Envelope.Type = {
+		Linear : "linear",
+		Exponential : "exponential",
+ 	};
 
 	return Tone.Envelope;
 });

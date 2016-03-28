@@ -1,64 +1,71 @@
+<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
 	<title>EXAMPLES</title>
 
-	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<link rel="icon" type="image/png" sizes="174x174" href="./style/favicon.png">
 	
-	<script type="text/javascript" src="./deps/jquery.min.js"></script>
-	<script type="text/javascript" src="./deps/jquery-ui.js"></script>
-	<script type="text/javascript" src="./deps/jquery.ui.touch-punch.js"></script>
-	<script type="text/javascript" src="../build/Tone.js"></script>
-	<script type="text/javascript" src="../build/Tone.Preset.js"></script>
-	<script type="text/javascript" src="./Widgets.js"></script>
-	<script type="text/javascript" src="./ExampleList.js"></script>
-	<link rel="stylesheet" type="text/css" href="./style/widgets.css">
-	<link rel="stylesheet" type="text/css" href="./style/jquery-ui.css">
-	<script type="text/javascript" src="./deps/qwerty-hancock.js"></script>
+	<script type="text/javascript" src="./scripts/jquery.min.js"></script>
+	<script type="text/javascript" src="./scripts/Logo.js"></script>
+	<script type="text/javascript" src="./scripts/ExampleList.js"></script>
+
+	<link rel="stylesheet" type="text/css" href="./style/examples.css">	
 
 </head>
 <body>
-	<div id="Container">
-		<div id='TopBar'>
-			<div id="HomePage">
-				<a href="https://github.com/TONEnoTONE/Tone.js">Tone.js</a>
-			</div>
-		</div>
-		<div id="Explanation">
-			Examples
-		</div>
-		<div id="Content">
-			
-		</div>
+	<style type="text/css">
+		#Content div{
+			font-size: 16px;
+			margin-top: 5px;
+		}
+		#Content a {
+			margin-left: 10px;
+			font-weight: normal!important;
+		}
+		.Category {
+			font-weight: 900;
+			font-size: 18px;
+		}
+
+		#ExampleList {
+			width: 200px;
+			margin-left: auto;
+			margin-right: auto;
+			margin-bottom: 40px;
+		}
+	</style>
+	<div id="Content" class="FullScreen">
+		<div id="ExampleList"></div>
 	</div>
 	<script type="text/javascript">
 
-		var content = $("#Content");
-		for (var catName in ExampleList){
-		$("<div>").addClass("Category").text(catName)
-			.appendTo(content);
-		var category = ExampleList[catName];
-		for (var example in category){
-			$("<div>").addClass("Item")
-				.appendTo(content)
-				.html($("<a>").attr("href", category[example]+".html").text(example));
-		}
-	}
+		var container = $("#ExampleList");
+
+		$(function(){
+
+			$(function(){
+				var topbar = $("<div>").attr("id", "TopBar");
+				$("body").prepend(topbar);
+				var logo = new Logo({
+					"container" : topbar,
+					"height" : topbar.height() - 6,
+					"width" : 140
+				});
+			});
+
+			for (var catName in ExampleList){
+				$("<div>").addClass("Category").text(catName).appendTo(container);
+				var category = ExampleList[catName];
+				for (var example in category){
+					$("<div>").addClass("Item")
+						.appendTo(container)
+						.html($("<a>").attr("href", category[example]+".html").text(example));
+				}
+			}
+
+		});
 	</script>
-	<style type="text/css">
-	#Content div{
-		font-size: 14px;
-		margin-top: 5px;
-	}
-	a:visited {
-		color: black;
-	}
-	a {
-		margin-left: 10px;
-		color: black;
-	}
-	.Category {
-		font-weight: 900;
-	}
-	</style>
 </body>
 </html>

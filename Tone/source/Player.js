@@ -1,222 +1,343 @@
-define(["Tone/core/Tone", "Tone/source/Source"], function(Tone){
+define(["Tone/core/Tone", "Tone/core/Buffer", "Tone/source/Source"], function(Tone){
 
 	"use strict";
 	
 	/**
-	 *  @class  Audio file player with start, loop, stop.
+	 *  @class  Tone.Player is an audio file player with start, loop, and stop functions.
 	 *  
 	 *  @constructor
 	 *  @extends {Tone.Source} 
-	 *  @param {string=} url if a url is passed in, it will be loaded
-	 *                       and invoke the callback if it also passed
-	 *                       in.
-	 *  @param {function(Tone.Player)=} onload callback to be invoked
-	 *                                     once the url is loaded
+	 *  @param {string|AudioBuffer} url Either the AudioBuffer or the url from
+	 *                                  which to load the AudioBuffer
+	 *  @param {function=} onload The function to invoke when the buffer is loaded. 
+	 *                            Recommended to use Tone.Buffer.onload instead.
+	 *  @example
+	 * var player = new Tone.Player("./path/to/sample.mp3").toMaster();
+	 * Tone.Buffer.onload = function(){
+	 * 	player.start();
+	 * }
 	 */
-	Tone.Player = function(url, onload){
-		
-		Tone.Source.call(this);
+	Tone.Player = function(url){
+
+		var options;
+		if (url instanceof Tone.Buffer){
+			url = url.get();
+			options = Tone.Player.defaults;
+		} else {
+			options = this.optionsObject(arguments, ["url", "onload"], Tone.Player.defaults);
+		}		
+		Tone.Source.call(this, options);
 
 		/**
 		 *  @private
 		 *  @type {AudioBufferSourceNode}
 		 */
 		this._source = null;
+
+		/**
+		 *  If the file should play as soon
+		 *  as the buffer is loaded. 
+		 *  @type {boolean}
+		 *  @example
+		 * //will play as soon as it's loaded
+		 * var player = new Tone.Player({
+		 * 	"url" : "./path/to/sample.mp3",
+		 * 	"autostart" : true,
+		 * }).toMaster();
+		 */
+		this.autostart = options.autostart;
 		
 		/**
 		 *  the buffer
 		 *  @private
-		 *  @type {AudioBuffer}
+		 *  @type {Tone.Buffer}
 		 */
-		this._buffer = null;
-
-
-		/**
-		 *  the duration of the buffer once it's been loaded
-		 *  @type {number}
-		 *  @readOnly
-		 */
-		this.duration = 0;
+		this._buffer = new Tone.Buffer({
+			"url" : options.url, 
+			"onload" : this._onload.bind(this, options.onload),
+			"reverse" : options.reverse
+		});
+		if (url instanceof AudioBuffer){
+			this._buffer.set(url);
+		}
 
 		/**
 		 *  if the buffer should loop once it's over
 		 *  @type {boolean}
+		 *  @private
 		 */
-		this.loop = false;
+		this._loop = options.loop;
 
 		/**
 		 *  if 'loop' is true, the loop will start at this position
-		 *  
-		 *  @type {number}
+		 *  @type {Time}
+		 *  @private
 		 */
-		this.loopStart = 0;
+		this._loopStart = options.loopStart;
 
 		/**
 		 *  if 'loop' is true, the loop will end at this position
-		 *  
-		 *  @type {number}
+		 *  @type {Time}
+		 *  @private
 		 */
-		this.loopEnd = 0;
+		this._loopEnd = options.loopEnd;
 
 		/**
 		 *  the playback rate
 		 *  @private
 		 *  @type {number}
 		 */
-		this._playbackRate = 1;
+		this._playbackRate = options.playbackRate;
 
 		/**
-		 *  enabling retrigger will allow a player to be restarted
-		 *  before the the previous 'start' is done playing
-		 *  
+		 *  Enabling retrigger will allow a player to be restarted
+		 *  before the the previous 'start' is done playing. Otherwise, 
+		 *  successive calls to Tone.Player.start will only start
+		 *  the sample if it had played all the way through. 
 		 *  @type {boolean}
 		 */
-		this.retrigger = false;
-
-		/**
-		 *  set a callback function to invoke when the sample is over
-		 *  
-		 *  @type {function}
-		 */
-		this.onended = function(){};
-
-		//if there is a url, load it. 
-		if (url){
-			this.load(url, onload);
-		}
+		this.retrigger = options.retrigger;
 	};
 
 	Tone.extend(Tone.Player, Tone.Source);
-
+	
 	/**
-	 *  makes an xhr reqest for the selected url
-	 *  Load the audio file as an audio buffer.
-	 *  Decodes the audio asynchronously and invokes
-	 *  the callback once the audio buffer loads.
-	 *
-	 *  @param {string} url the url of the buffer to load.
-	 *                      filetype support depends on the
-	 *                      browser.
-	 *  @param {function(Tone.Player)=} callback
+	 *  the default parameters
+	 *  @static
+	 *  @const
+	 *  @type {Object}
 	 */
-	Tone.Player.prototype.load = function(url, callback){
-		if (!this._buffer){
-			var request = new XMLHttpRequest();
-			request.open("GET", url, true);
-			request.responseType = "arraybuffer";
-			// decode asynchronously
-			var self = this;
-			request.onload = function() {
-				self.context.decodeAudioData(request.response, function(buff) {
-					self.setBuffer(buff);
-					if (callback){
-						callback(self);
-					}
-				});
-			};
-			//send the request
-			request.send();
-		} else {
-			if (callback){
-				callback(this);
-			}
-		}
+	Tone.Player.defaults = {
+		"onload" : Tone.noOp,
+		"playbackRate" : 1,
+		"loop" : false,
+		"autostart" : false,
+		"loopStart" : 0,
+		"loopEnd" : 0,
+		"retrigger" : false,
+		"reverse" : false,
 	};
 
 	/**
-	 *  set the buffer
-	 *
-	 *  @param {AudioBuffer} buffer the buffer which the player will play.
-	 *                              note: if you switch the buffer after
-	 *                              the player is already started, it will not
-	 *                              take effect until the next time the player
-	 *                              is started.
+	 *  Load the audio file as an audio buffer.
+	 *  Decodes the audio asynchronously and invokes
+	 *  the callback once the audio buffer loads. 
+	 *  Note: this does not need to be called if a url
+	 *  was passed in to the constructor. Only use this
+	 *  if you want to manually load a new url. 
+	 * @param {string} url The url of the buffer to load.
+	 *                     Filetype support depends on the
+	 *                     browser.
+	 *  @param  {function=} callback The function to invoke once
+	 *                               the sample is loaded.
+	 *  @returns {Tone.Player} this
 	 */
-	Tone.Player.prototype.setBuffer = function(buffer){
-		this._buffer = buffer;
-		this.duration = buffer.duration;
+	Tone.Player.prototype.load = function(url, callback){
+		this._buffer.load(url, this._onload.bind(this, callback));
+		return this;
+	};
+
+	/**
+	 * Internal callback when the buffer is loaded.
+	 * @private
+	 */
+	Tone.Player.prototype._onload = function(callback){
+		callback(this);
+		if (this.autostart){
+			this.start();
+		}
 	};
 
 	/**
 	 *  play the buffer between the desired positions
-	 *  	
-	 *  @param  {Tone.Time=} startTime 
-	 *  @param  {Tone.Time=} offset    
-	 *  @param  {Tone.Time=} duration
+	 *  
+	 *  @private
+	 *  @param  {Time} [startTime=now] when the player should start.
+	 *  @param  {Time} [offset=0] the offset from the beginning of the sample
+	 *                                 to start at. 
+	 *  @param  {Time=} duration how long the sample should play. If no duration
+	 *                                is given, it will default to the full length 
+	 *                                of the sample (minus any offset)
+	 *  @returns {Tone.Player} this
 	 */
-	Tone.Player.prototype.start = function(startTime, offset, duration){
-		if (this.state === Tone.Source.State.STOPPED || this.retrigger){
-			if (this._buffer){
-				this.state = Tone.Source.State.STARTED;
-				//default args
+	Tone.Player.prototype._start = function(startTime, offset, duration){
+		if (this._buffer.loaded){
+			//if it's a loop the default offset is the loopstart point
+			if (this._loop){
+				offset = this.defaultArg(offset, this._loopStart);
+			} else {
+				//otherwise the default offset is 0
 				offset = this.defaultArg(offset, 0);
-				if (this.loop){
-					offset = this.loopStart;
-				}
-				duration = this.defaultArg(duration, this._buffer.duration - offset);
-				//make the source
-				this._source = this.context.createBufferSource();
-				this._source.buffer = this._buffer;
-				//set the looping properties
-				this._source.loop = this.loop;
-				this._source.loopStart = this.loopStart;
-				this._source.loopEnd = this.loopEnd;
-				//and other properties
-				this._source.playbackRate.value = this._playbackRate;
-				this._source.onended = this._onended.bind(this);
-				this.chain(this._source, this.output);
-				//start it
-				this._source.start(this.toSeconds(startTime), this.toSeconds(offset), this.toSeconds(duration));
 			}
+			offset = this.toSeconds(offset);
+			duration = this.defaultArg(duration, this._buffer.duration - offset);
+			//the values in seconds
+			startTime = this.toSeconds(startTime);
+			duration = this.toSeconds(duration);
+			//make the source
+			this._source = this.context.createBufferSource();
+			this._source.buffer = this._buffer.get();
+			//set the looping properties
+			if (this._loop){
+				this._source.loop = this._loop;
+				this._source.loopStart = this.toSeconds(this._loopStart);
+				this._source.loopEnd = this.toSeconds(this._loopEnd);
+			} else {
+				//if it's not looping, set the state change at the end of the sample
+				this._state.setStateAtTime(Tone.State.Stopped, startTime + duration);
+			}
+			//and other properties
+			this._source.playbackRate.value = this._playbackRate;
+			this._source.connect(this.output);
+			//start it
+			if (this._loop){
+				this._source.start(startTime, offset);
+			} else {
+				this._source.start(startTime, offset, duration);
+			}
+		} else {
+			throw Error("tried to start Player before the buffer was loaded");
 		}
+		return this;
 	};
 
 	/**
 	 *  Stop playback.
-	 * 
-	 *  @param  {Tone.Time} time
+	 *  @private
+	 *  @param  {Time} [time=now]
+	 *  @returns {Tone.Player} this
 	 */
-	Tone.Player.prototype.stop = function(time){
-		if (this.state === Tone.Source.State.STARTED) {
-			if (this._buffer && this._source){
-				if (!time){
-					this.state = Tone.Source.State.STOPPED;
-				}
-				this._source.stop(this.toSeconds(time));
+	Tone.Player.prototype._stop = function(time){
+		if (this._source){
+			this._source.stop(this.toSeconds(time));
+			this._source = null;
+		}
+		return this;
+	};
+
+	/**
+	 *  Set the loop start and end. Will only loop if loop is 
+	 *  set to true. 
+	 *  @param {Time} loopStart The loop end time
+	 *  @param {Time} loopEnd The loop end time
+	 *  @returns {Tone.Player} this
+	 *  @example
+	 * //loop 0.1 seconds of the file. 
+	 * player.setLoopPoints(0.2, 0.3);
+	 * player.loop = true;
+	 */
+	Tone.Player.prototype.setLoopPoints = function(loopStart, loopEnd){
+		this.loopStart = loopStart;
+		this.loopEnd = loopEnd;
+		return this;
+	};
+
+	/**
+	 * If loop is true, the loop will start at this position. 
+	 * @memberOf Tone.Player#
+	 * @type {Time}
+	 * @name loopStart
+	 */
+	Object.defineProperty(Tone.Player.prototype, "loopStart", {
+		get : function(){
+			return this._loopStart;
+		}, 
+		set : function(loopStart){
+			this._loopStart = loopStart;
+			if (this._source){
+				this._source.loopStart = this.toSeconds(loopStart);
 			}
 		}
-	};
+	});
 
 	/**
-	 *  set the rate at which the file plays
-	 *  
-	 *  @param {number} rate
-	 *  @param {Tone.Time=} rampTime (optional) the amount of time it takes to 
-	 *                               reach the rate
+	 * If loop is true, the loop will end at this position.
+	 * @memberOf Tone.Player#
+	 * @type {Time}
+	 * @name loopEnd
 	 */
-	Tone.Player.prototype.setPlaybackRate = function(rate, rampTime){
-		this._playbackRate = rate;
-		if (this._source) {
-			if (rampTime){
-				this._source.playbackRate.exponentialRampToValueAtTime(rate, this.toSeconds(rampTime));
-			} else {
-				this._source.playbackRate.value = rampTime;
+	Object.defineProperty(Tone.Player.prototype, "loopEnd", {
+		get : function(){
+			return this._loopEnd;
+		}, 
+		set : function(loopEnd){
+			this._loopEnd = loopEnd;
+			if (this._source){
+				this._source.loopEnd = this.toSeconds(loopEnd);
 			}
-		} 
-	};
+		}
+	});
 
 	/**
-	 *  internal call when the buffer is done playing
-	 *  
-	 *  @private
+	 * The audio buffer belonging to the player. 
+	 * @memberOf Tone.Player#
+	 * @type {Tone.Buffer}
+	 * @name buffer
 	 */
-	Tone.Player.prototype._onended = function(){
-		this.state = Tone.Source.State.STOPPED;
-		this.onended();
-	};
+	Object.defineProperty(Tone.Player.prototype, "buffer", {
+		get : function(){
+			return this._buffer;
+		}, 
+		set : function(buffer){
+			this._buffer.set(buffer);
+		}
+	});
 
 	/**
-	 *  dispose and disconnect
+	 * If the buffer should loop once it's over. 
+	 * @memberOf Tone.Player#
+	 * @type {boolean}
+	 * @name loop
+	 */
+	Object.defineProperty(Tone.Player.prototype, "loop", {
+		get : function(){
+			return this._loop;
+		}, 
+		set : function(loop){
+			this._loop = loop;
+			if (this._source){
+				this._source.loop = loop;
+			}
+		}
+	});
+
+	/**
+	 * The playback speed. 1 is normal speed. This is not a signal because
+	 * Safari and iOS currently don't support playbackRate as a signal.
+	 * @memberOf Tone.Player#
+	 * @type {number}
+	 * @name playbackRate
+	 */
+	Object.defineProperty(Tone.Player.prototype, "playbackRate", {
+		get : function(){
+			return this._playbackRate;
+		}, 
+		set : function(rate){
+			this._playbackRate = rate;
+			if (this._source) {
+				this._source.playbackRate.value = rate;
+			}
+		}
+	});
+
+	/**
+	 * The direction the buffer should play in
+	 * @memberOf Tone.Player#
+	 * @type {boolean}
+	 * @name reverse
+	 */
+	Object.defineProperty(Tone.Player.prototype, "reverse", {
+		get : function(){
+			return this._buffer.reverse;
+		}, 
+		set : function(rev){
+			this._buffer.reverse = rev;
+		}
+	});
+
+	/**
+	 *  Dispose and disconnect.
+	 *  @return {Tone.Player} this
 	 */
 	Tone.Player.prototype.dispose = function(){
 		Tone.Source.prototype.dispose.call(this);
@@ -224,7 +345,9 @@ define(["Tone/core/Tone", "Tone/source/Source"], function(Tone){
 			this._source.disconnect();
 			this._source = null;
 		}
+		this._buffer.dispose();
 		this._buffer = null;
+		return this;
 	};
 
 	return Tone.Player;

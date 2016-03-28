@@ -1,70 +1,56 @@
-define(["Tone/core/Tone", "Tone/signal/LessThan", "Tone/signal/Negate", "Tone/signal/Signal"], function(Tone){
+define(["Tone/core/Tone", "Tone/signal/GreaterThanZero", "Tone/signal/Subtract", "Tone/signal/Signal"], 
+	function(Tone){
 
 	"use strict";
 
 	/**
-	 *  @class  Output 1 if the signal is greater than the value, otherwise outputs 0
+	 *  @class  Output 1 if the signal is greater than the value, otherwise outputs 0.
+	 *          can compare two signals or a signal and a number. 
 	 *  
 	 *  @constructor
-	 *  @extends {Tone}
-	 *  @param {number=} [value=0] the value to compare to the incoming signal
+	 *  @extends {Tone.Signal}
+	 *  @param {number} [value=0] the value to compare to the incoming signal
+	 *  @example
+	 * var gt = new Tone.GreaterThan(2);
+	 * var sig = new Tone.Signal(4).connect(gt);
+	 * //output of gt is equal 1. 
 	 */
 	Tone.GreaterThan = function(value){
+
+		Tone.call(this, 2, 0);
+		
 		/**
-		 *  @type {Tone.LessThan}
+		 *  subtract the amount from the incoming signal
+		 *  @type {Tone.Subtract}
 		 *  @private
 		 */
-		this._lt = new Tone.LessThan(-value);
+		this._param = this.input[0] = new Tone.Subtract(value);
+		this.input[1] = this._param.input[1];
 
 		/**
-		 *  @type {Tone.Negate}
+		 *  compare that amount to zero
+		 *  @type {Tone.GreaterThanZero}
 		 *  @private
 		 */
-		this._neg = new Tone.Negate();
-
-		/**
-	 	 *  alias for the adder
-		 *  @type {Tone.Add}
-		 */
-		this.input = this._neg;
-
-		/**
-		 *  alias for the thresh
-		 *  @type {Tone.Threshold}
-		 */
-		this.output = this._lt;
+		this._gtz = this.output = new Tone.GreaterThanZero();
 
 		//connect
-		this._neg.connect(this._lt);
+		this._param.connect(this._gtz);
 	};
 
-	Tone.extend(Tone.GreaterThan);
-
-	/**
-	 *  set the value to compare to
-	 *  
-	 *  @param {number} value
-	 */
-	Tone.GreaterThan.prototype.setValue = function(value){
-		this._lt.setValue(-value);
-	};
-
-	/**
-	 *  borrows the method from {@link Tone.Signal}
-	 *  
-	 *  @function
-	 */
-	Tone.GreaterThan.prototype.connect = Tone.Signal.prototype.connect;
+	Tone.extend(Tone.GreaterThan, Tone.Signal);
 
 	/**
 	 *  dispose method
+	 *  @returns {Tone.GreaterThan} this
 	 */
 	Tone.GreaterThan.prototype.dispose = function(){
 		Tone.prototype.dispose.call(this);
-		this._lt.disconnect();
-		this._neg.disconnect();
-		this._lt = null;
-		this._neg = null;
+		this._param.dispose();
+		this._param = null;
+		this._gtz.dispose();
+		this._gtz = null;
+		return this;
 	};
 
 	return Tone.GreaterThan;
