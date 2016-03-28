@@ -96,6 +96,27 @@ function(Tone){
 		this.bpm._fromUnits = this._fromUnits.bind(this);
 		this.bpm.units = Tone.Type.BPM;
 		this.bpm.value = TransportConstructor.defaults.bpm;
+
+		var self = this;
+		Object.defineProperty(this.bpm, "value", {
+			set: function(value) {
+				var self = this;
+				var convertedVal = this._fromUnits(value);
+				this._initial = convertedVal;
+				this._param.value = convertedVal;
+				var evt = new CustomEvent("bpm-change", {
+					detail: {
+						elt: self,
+						newValue: convertedVal
+					}
+				});
+				document.dispatchEvent(evt);
+			},
+			get : function(){
+				return this._toUnits(this._param.value);
+				// return self._clock.frequency.value;
+			}
+		});
 		this._readOnly("bpm");
 
 		/**
